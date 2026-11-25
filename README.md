@@ -31,3 +31,7 @@ sh scripts/test.sh               # テスト一式
 ```
 
 構成と決まりごとは `CLAUDE.md`、経緯と確認済みの事実は `docs/handoff.md` にある。
+
+## ライセンス
+
+MIT（`LICENSE`）。同梱している libghostty-vt などのライセンスは `THIRD_PARTY_LICENSES.md` にある。

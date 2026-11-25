@@ -30,6 +30,7 @@ VERSION="$("$APP/Contents/MacOS/uparupa" --version)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 
 mkdir -p "$APP/Contents/Resources/bin"
+cp LICENSE THIRD_PARTY_LICENSES.md "$APP/Contents/Resources/"
 cp scripts/uparupa-launcher.sh "$APP/Contents/Resources/bin/uparupa"
 chmod +x "$APP/Contents/Resources/bin/uparupa"
 
