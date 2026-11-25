@@ -1,0 +1,11 @@
+.{
+    .name = .wren,
+    .version = "0.0.0",
+    .fingerprint = 0x325928baa621f3fb,
+    .minimum_zig_version = "0.17.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "core",
+    },
+}
