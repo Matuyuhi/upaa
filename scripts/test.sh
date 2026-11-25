@@ -29,7 +29,8 @@ done
 
 # 共有の CI では速さがぶれるので、桁が違うほど遅くなったときだけ失敗させる。
 if [ ! -f build/bench.txt ]; then
-  base64 -i /dev/urandom -b 100 | head -c 20000000 > build/bench.txt
+  # 読む量を先に区切る。base64 側を head で切る形だと、パイプ切れのシグナルを無視する環境（GitHub Actions のランナー）で終わらない。
+  head -c 15000000 /dev/urandom | base64 -b 100 > build/bench.txt
 fi
 "$BIN" --bench-headless "$PWD/build/bench.txt" --max-frame-ms 5 --min-mb-per-s 10
 

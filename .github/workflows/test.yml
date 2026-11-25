@@ -9,6 +9,20 @@ permissions:
   contents: read
 
 jobs:
+  # 使っている action が actions.lock に固定した commit のままかを確かめる。
+  # action を足したり上げたりしたら、手元で gh actions-lock を実行して lockfile を commit する。
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4.4.0
+      - name: lockfile を確かめる
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install github/gh-actions-lock
+          gh actions-lock --verify
+
   test:
     # スクリーンショットを比べるので、フォントの描画が変わらないよう macOS のバージョンを固定する（xcode-27 は macOS 27）。
     # 上げるときは、落ちた比較の画像を見てから基準（tests/snapshots/）を作り直す。
@@ -18,7 +32,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
 
       - name: Zig と minisign を入れる
         run: |
@@ -37,7 +51,7 @@ jobs:
 
       - name: 書き出した画面を残す
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: snapshots
           path: build/snapshots
