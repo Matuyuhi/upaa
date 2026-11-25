@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define UPARUPA_CORE_ABI_VERSION 5
+#define UPARUPA_CORE_ABI_VERSION 6
 
 uint32_t uparupa_core_abi_version(void);
 
@@ -23,8 +23,8 @@ typedef struct {
     void (*on_exit)(void *userdata);
 } UparupaSessionCallbacks;
 
-// ログインシェルを起動する。失敗したら NULL。
-UparupaSession *uparupa_session_new(uint16_t cols, uint16_t rows, const UparupaSessionCallbacks *callbacks);
+// command が NULL ならログインシェルを、そうでなければ /bin/sh -c command を起動する。失敗したら NULL。
+UparupaSession *uparupa_session_new(uint16_t cols, uint16_t rows, const char *command, const UparupaSessionCallbacks *callbacks);
 void uparupa_session_free(UparupaSession *session);
 void uparupa_session_write(UparupaSession *session, const uint8_t *data, size_t len);
 // キーを 1 回押した（離した）こと。

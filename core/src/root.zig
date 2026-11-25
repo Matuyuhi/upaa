@@ -20,14 +20,16 @@ comptime {
 /// Swift 側のヘッダと食い違っていないかを起動時に確かめるための番号。
 /// 公開する関数や構造体の形を変えたら、ヘッダの UPARUPA_CORE_ABI_VERSION と一緒に上げる。
 export fn uparupa_core_abi_version() u32 {
-    return 5;
+    return 6;
 }
 
 // 端末セッション
 
-export fn uparupa_session_new(cols: u16, rows: u16, callbacks: ?*const Session.Callbacks) ?*Session {
+/// command が null ならログインシェル、そうでなければ /bin/sh -c command を起動する。
+export fn uparupa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, callbacks: ?*const Session.Callbacks) ?*Session {
     return Session.create(.{
         .size = .{ .cols = cols, .rows = rows },
+        .command = command,
         .callbacks = if (callbacks) |cb| cb.* else .{},
     }) catch null;
 }

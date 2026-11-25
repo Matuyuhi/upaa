@@ -21,14 +21,17 @@ pub const Size = struct {
 
 pub const SpawnError = error{ ForkFailed, NoShell };
 
-/// command が null ならユーザーのログインシェルをログインシェルとして起動する。
-/// null でなければ、そのパスを引数なしで起動する（テスト用）。
+/// command が null ならユーザーのログインシェルを、ホームディレクトリでログインシェルとして起動する。
+/// null でなければ、今のディレクトリで /bin/sh -c command を実行する（テストや画面の書き出し用）。
 pub fn spawn(command: ?[*:0]const u8, size: Size) SpawnError!Pty {
     // fork と exec の間では malloc できないので、必要な文字列は fork の前に作る。
-    const path: [*:0]const u8 = command orelse loginShell() orelse return error.NoShell;
+    const path: [*:0]const u8 = if (command == null) loginShell() orelse return error.NoShell else "/bin/sh";
     var argv0_buf: [256]u8 = undefined;
-    const argv0: [*:0]const u8 = if (command == null) loginArgv0(path, &argv0_buf) else path;
-    const home: ?[*:0]const u8 = c.getenv("HOME");
+    var argv: [4:null]?[*:0]const u8 = if (command) |cmd|
+        .{ "sh", "-c", cmd, null }
+    else
+        .{ loginArgv0(path, &argv0_buf), null, null, null };
+    const home: ?[*:0]const u8 = if (command == null) c.getenv("HOME") else null;
 
     var ws = size.winsize();
     var master: c_int = -1;
@@ -38,7 +41,6 @@ pub fn spawn(command: ?[*:0]const u8, size: Size) SpawnError!Pty {
         // 子プロセス。ここから exec までは async-signal-safe な関数だけを呼ぶ。
         if (home) |dir| _ = c.chdir(dir);
         _ = c.setenv("TERM", "xterm-256color", 1);
-        var argv = [_:null]?[*:0]const u8{argv0};
         _ = c.execv(path, @ptrCast(&argv));
         c._exit(127);
     }

@@ -18,7 +18,8 @@ final class TerminalSession {
         set { events.onExit = newValue }
     }
 
-    init?(cols: UInt16, rows: UInt16) {
+    /// command が nil ならログインシェルを、そうでなければ /bin/sh -c command を起動する。
+    init?(cols: UInt16, rows: UInt16, command: String? = nil) {
         let events = Events()
         var callbacks = UparupaSessionCallbacks(
             userdata: Unmanaged.passUnretained(events).toOpaque(),
@@ -31,7 +32,7 @@ final class TerminalSession {
                 DispatchQueue.main.async { events.onExit?() }
             }
         )
-        guard let handle = uparupa_session_new(cols, rows, &callbacks) else { return nil }
+        guard let handle = uparupa_session_new(cols, rows, command, &callbacks) else { return nil }
         self.handle = handle
         self.events = events
     }

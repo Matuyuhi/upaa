@@ -22,6 +22,7 @@ macOS 専用の自作ターミナルエミュレータ。Swift（AppKit）と Zi
 - `Sources/UparupaKit/` — Swift の中身（`App/`、`Terminal/`、`Render/`、`SelfTest/`）。`Sources/uparupa/` は起動するだけ。
 - `Shaders/` — Metal のシェーダ。`scripts/build-app.sh` がコンパイルして `.app` に入れる。セルのデータの並びは `core/src/render/Cell.zig`、C ヘッダの `UparupaCell`、シェーダの `Cell` の 3 か所で揃える。
 - 描画の確認は `build/uparupa.app/Contents/MacOS/uparupa --snapshot <png> [--input <文字列>]` で 1 フレームを PNG に書き出して見る。キー入力の確認は `--type <文字列>`、計測は `--bench-cat <ファイル>` と `--bench-keys`（どれもウィンドウが開く）。
+- テストは `sh scripts/test.sh`（Zig のテスト、`--check`、`tests/fixtures/*.vt` の画面と `tests/snapshots/` の基準の画像の比較、速さの下限・上限）。描画を意図して変えたときは `UPDATE_SNAPSHOTS=1 sh scripts/test.sh` で基準を置き換え、画像を見てから commit する。GitHub Actions（`.github/workflows/test.yml`）も同じスクリプトを呼ぶ。
 - `swift build` と PTY を使うテスト（`zig build test`）は Claude Code のサンドボックスの中では動かない。
 
 ## 守ること
