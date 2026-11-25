@@ -8,11 +8,14 @@ const std = @import("std");
 const c = @import("posix");
 const vt = @import("ghostty");
 const Pty = @import("Pty.zig");
+const keymap = @import("keymap.zig");
 
 const alloc = std.heap.c_allocator;
 
 pty: Pty,
 terminal: vt.GhosttyTerminal,
+key_encoder: vt.GhosttyKeyEncoder,
+key_event: vt.GhosttyKeyEvent,
 mutex: std.c.pthread_mutex_t = .{},
 thread: std.Thread,
 /// 読み取りスレッドを止めるためのパイプ。書くと poll が起きる。
@@ -27,6 +30,29 @@ pub const Callbacks = extern struct {
     on_wakeup: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
     /// 子プロセスが終了した。読み取りスレッドから呼ばれる。
     on_exit: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
+};
+
+/// キーを 1 回押した（離した）こと。Sources/CWrenCore の WrenKeyEvent と同じ並び。
+pub const KeyEvent = extern struct {
+    /// macOS の仮想キーコード。
+    key_code: u16,
+    action: Action,
+    /// Mods の値を足し合わせたもの。
+    mods: u8 = 0,
+    /// 修飾キーなしで同じキーを押したときの文字。分からなければ 0。
+    unshifted_codepoint: u32 = 0,
+    /// このキーで入力される文字（UTF-8）。無ければ null。
+    text: ?[*]const u8 = null,
+    text_len: usize = 0,
+
+    pub const Action = enum(u8) { release = 0, press = 1, repeat = 2 };
+
+    pub const Mods = struct {
+        pub const shift = 1 << 0;
+        pub const ctrl = 1 << 1;
+        pub const alt = 1 << 2;
+        pub const super = 1 << 3;
+    };
 };
 
 pub const Options = struct {
@@ -47,6 +73,13 @@ pub fn create(opts: Options) !*Session {
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_USERDATA, self);
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_WRITE_PTY, @ptrCast(&onWritePty));
 
+    var key_encoder: vt.GhosttyKeyEncoder = null;
+    if (vt.ghostty_key_encoder_new(null, &key_encoder) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
+    errdefer vt.ghostty_key_encoder_free(key_encoder);
+    var key_event: vt.GhosttyKeyEvent = null;
+    if (vt.ghostty_key_event_new(null, &key_event) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
+    errdefer vt.ghostty_key_event_free(key_event);
+
     var stop_pipe: [2]c_int = undefined;
     if (c.pipe(&stop_pipe) != 0) return error.PipeFailed;
     errdefer for (stop_pipe) |fd| {
@@ -59,6 +92,8 @@ pub fn create(opts: Options) !*Session {
     self.* = .{
         .pty = pty,
         .terminal = terminal,
+        .key_encoder = key_encoder,
+        .key_event = key_event,
         .thread = undefined,
         .stop_pipe = stop_pipe,
         .callbacks = opts.callbacks,
@@ -72,6 +107,8 @@ pub fn destroy(self: *Session) void {
     self.thread.join();
     self.pty.deinit();
     for (self.stop_pipe) |fd| _ = c.close(fd);
+    vt.ghostty_key_event_free(self.key_event);
+    vt.ghostty_key_encoder_free(self.key_encoder);
     vt.ghostty_terminal_free(self.terminal);
     alloc.destroy(self);
 }
@@ -79,6 +116,33 @@ pub fn destroy(self: *Session) void {
 /// 子プロセスへの入力（キー入力をエンコードしたバイト列など）。
 pub fn write(self: *Session, bytes: []const u8) void {
     _ = self.pty.writeAll(bytes);
+}
+
+/// キー入力を、端末の今のモード（カーソルキーのモードなど）に合わせたバイト列にして子プロセスへ送る。
+pub fn key(self: *Session, event: KeyEvent) void {
+    var buf: [128]u8 = undefined;
+    var len: usize = 0;
+    {
+        self.lock();
+        defer self.unlock();
+
+        const text_len = if (event.text == null) 0 else event.text_len;
+        // 文字になったキーでは、Shift と Option はその文字を作るのに使われている。
+        const consumed: u8 = if (text_len > 0) event.mods & (KeyEvent.Mods.shift | KeyEvent.Mods.alt) else 0;
+
+        const ev = self.key_event;
+        _ = vt.ghostty_key_event_set_action(ev, @intFromEnum(event.action));
+        _ = vt.ghostty_key_event_set_key(ev, keymap.fromMacKeyCode(event.key_code));
+        _ = vt.ghostty_key_event_set_mods(ev, event.mods);
+        _ = vt.ghostty_key_event_set_consumed_mods(ev, consumed);
+        _ = vt.ghostty_key_event_set_unshifted_codepoint(ev, event.unshifted_codepoint);
+        _ = vt.ghostty_key_event_set_composing(ev, false);
+        _ = vt.ghostty_key_event_set_utf8(ev, .{ .ptr = event.text, .len = text_len });
+
+        _ = vt.ghostty_key_encoder_set_from_terminal(self.key_encoder, self.terminal);
+        if (vt.ghostty_key_encoder_encode(self.key_encoder, ev, &buf, buf.len, &len) != vt.GHOSTTY_SUCCESS) return;
+    }
+    if (len > 0) self.write(buf[0..len]);
 }
 
 pub fn resize(self: *Session, size: Pty.Size, cell_width_px: u32, cell_height_px: u32) void {
@@ -195,4 +259,23 @@ test "resize is visible to the child" {
     self.write("stty size\n");
     var out: [4096]u8 = undefined;
     try self.waitForText("30 100", &out);
+}
+
+fn typeText(self: *Session, text: []const u8) void {
+    for (text) |ch| self.key(.{ .key_code = 0xFFFF, .action = .press, .text = @ptrCast(&ch), .text_len = 1 });
+}
+
+test "keys are encoded for the child" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "/bin/sh" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+
+    // Ctrl+C（キーコード 8 は C）で sleep が止まり、次のコマンドが実行される。
+    self.typeText("sleep 100");
+    self.key(.{ .key_code = 36, .action = .press });
+    _ = c.usleep(200 * 1000);
+    self.key(.{ .key_code = 8, .action = .press, .mods = KeyEvent.Mods.ctrl, .unshifted_codepoint = 'c' });
+    self.typeText("echo key-$((1+1))");
+    self.key(.{ .key_code = 36, .action = .press });
+    try self.waitForText("key-2", &out);
 }

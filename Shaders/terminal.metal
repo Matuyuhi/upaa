@@ -17,6 +17,8 @@ struct Uniforms {
     float2 viewport_px;
     float2 cell_px;
     float2 atlas_px;
+    // 描画先の左上から、グリッドの左上まで（余白）。
+    float2 origin_px;
 };
 
 struct Varyings {
@@ -41,7 +43,7 @@ vertex Varyings background_vertex(uint vertex_id [[vertex_id]],
                                   const device Cell *cells [[buffer(0)]],
                                   constant Uniforms &u [[buffer(1)]]) {
     Cell cell = cells[instance_id];
-    float2 px = (float2(cell.pos) + corner(vertex_id)) * u.cell_px;
+    float2 px = u.origin_px + (float2(cell.pos) + corner(vertex_id)) * u.cell_px;
     Varyings out;
     out.position = clip(px, u.viewport_px);
     out.color = float4(cell.bg) / 255.0;
@@ -59,7 +61,7 @@ vertex Varyings glyph_vertex(uint vertex_id [[vertex_id]],
                              constant Uniforms &u [[buffer(1)]]) {
     Cell cell = cells[instance_id];
     float2 size = float2(cell.glyph_size);
-    float2 origin = float2(cell.pos) * u.cell_px + float2(cell.glyph_offset);
+    float2 origin = u.origin_px + float2(cell.pos) * u.cell_px + float2(cell.glyph_offset);
     float2 px = origin + corner(vertex_id) * size;
     Varyings out;
     // 大きさ 0 のグリフは面積が 0 になり、何も描かれない。

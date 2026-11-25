@@ -5,6 +5,7 @@ import AppKit
 /// 引数:
 ///   --check                              リンクの確認をして結果を出力し、終了する
 ///   --snapshot <png> [--input <文字列>]   シェルに文字列を送ったあとの画面を PNG に書き出し、終了する
+///   --type <文字列>                       ウィンドウを開いて文字列をキー入力として流し、画面の文字を出力して終了する
 public enum WrenApp {
     public static func main() -> Never {
         let arguments = CommandLine.arguments
@@ -30,7 +31,7 @@ public enum WrenApp {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         app.mainMenu = makeMainMenu()
-        let delegate = AppDelegate()
+        let delegate = AppDelegate(typeText: value(after: "--type", in: arguments))
         app.delegate = delegate
         app.run()
         exit(0)

@@ -24,8 +24,7 @@ enum Snapshot {
             waitUntilQuiet(session)
         }
 
-        let width = cols * renderer.cellSize.width
-        let height = rows * renderer.cellSize.height
+        let (width, height) = renderer.pixelSize(cols: cols, rows: rows)
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: Renderer.pixelFormat, width: width, height: height, mipmapped: false)
         descriptor.usage = [.renderTarget]

@@ -11,6 +11,7 @@ const Atlas = @import("font/Atlas.zig");
 
 comptime {
     _ = @import("term/Pty.zig");
+    _ = @import("term/keymap.zig");
     _ = @import("font/Face.zig");
     _ = @import("font/Atlas.zig");
     _ = @import("render/Frame.zig");
@@ -19,7 +20,7 @@ comptime {
 /// Swift 側のヘッダと食い違っていないかを起動時に確かめるための番号。
 /// 公開する関数や構造体の形を変えたら、ヘッダの WREN_CORE_ABI_VERSION と一緒に上げる。
 export fn wren_core_abi_version() u32 {
-    return 4;
+    return 5;
 }
 
 // 端末セッション
@@ -37,6 +38,10 @@ export fn wren_session_free(session: *Session) void {
 
 export fn wren_session_write(session: *Session, data: [*]const u8, len: usize) void {
     session.write(data[0..len]);
+}
+
+export fn wren_session_key(session: *Session, event: *const Session.KeyEvent) void {
+    session.key(event.*);
 }
 
 export fn wren_session_resize(session: *Session, cols: u16, rows: u16, cell_width_px: u32, cell_height_px: u32) void {

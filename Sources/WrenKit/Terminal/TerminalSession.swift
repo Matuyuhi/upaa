@@ -46,6 +46,32 @@ final class TerminalSession {
         wren_session_write(handle, bytes, bytes.count)
     }
 
+    /// キーを 1 回押したこと。text はそのキーで入力される文字（無ければ nil）。
+    func key(code: UInt16, isRepeat: Bool, mods: UInt8, unshifted: UInt32, text: String?) {
+        let bytes = text.map { Array($0.utf8) } ?? []
+        bytes.withUnsafeBufferPointer { buffer in
+            var event = WrenKeyEvent(
+                key_code: code,
+                action: UInt8(isRepeat ? WREN_KEY_REPEAT : WREN_KEY_PRESS),
+                mods: mods,
+                unshifted_codepoint: unshifted,
+                text: buffer.isEmpty ? nil : buffer.baseAddress,
+                text_len: buffer.count)
+            wren_session_key(handle, &event)
+        }
+    }
+
+    func resize(cols: UInt16, rows: UInt16, cellWidth: Int, cellHeight: Int) {
+        wren_session_resize(handle, cols, rows, UInt32(cellWidth), UInt32(cellHeight))
+    }
+
+    /// 画面のプレーンテキスト。
+    func plainText() -> String {
+        var out = [UInt8](repeating: 0, count: 64 * 1024)
+        let n = wren_session_plain_text(handle, &out, out.count)
+        return n >= 0 ? String(decoding: out.prefix(min(n, out.count)), as: UTF8.self) : ""
+    }
+
     /// 前回の呼び出しから画面が変わっていれば true。
     func takeDirty() -> Bool {
         wren_session_take_dirty(handle)
