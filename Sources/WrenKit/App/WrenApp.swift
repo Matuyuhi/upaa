@@ -6,6 +6,8 @@ import AppKit
 ///   --check                              リンクの確認をして結果を出力し、終了する
 ///   --snapshot <png> [--input <文字列>]   シェルに文字列を送ったあとの画面を PNG に書き出し、終了する
 ///   --type <文字列>                       ウィンドウを開いて文字列をキー入力として流し、画面の文字を出力して終了する
+///   --bench-cat <ファイル>                ウィンドウを開いてファイルを cat し、かかった時間を出力して終了する
+///   --bench-keys                         ウィンドウを開いて 1 文字ずつ打ち、キーから表示までの時間を出力して終了する
 public enum WrenApp {
     public static func main() -> Never {
         let arguments = CommandLine.arguments
@@ -31,7 +33,15 @@ public enum WrenApp {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         app.mainMenu = makeMainMenu()
-        let delegate = AppDelegate(typeText: value(after: "--type", in: arguments))
+        var automation: Automation?
+        if let text = value(after: "--type", in: arguments) {
+            automation = .type(text)
+        } else if let path = value(after: "--bench-cat", in: arguments) {
+            automation = .benchCat(path)
+        } else if arguments.contains("--bench-keys") {
+            automation = .benchKeys
+        }
+        let delegate = AppDelegate(automation: automation)
         app.delegate = delegate
         app.run()
         exit(0)

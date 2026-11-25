@@ -21,7 +21,7 @@ macOS 専用の自作ターミナルエミュレータ。Swift（AppKit）と Zi
 - `Sources/CWrenCore/` — Zig の関数の C ヘッダ。`root.zig` と対で直し、形を変えたら ABI の番号を両方で上げる。
 - `Sources/WrenKit/` — Swift の中身（`App/`、`Terminal/`、`Render/`、`SelfTest/`）。`Sources/wren/` は起動するだけ。
 - `Shaders/` — Metal のシェーダ。`scripts/build-app.sh` がコンパイルして `.app` に入れる。セルのデータの並びは `core/src/render/Cell.zig`、C ヘッダの `WrenCell`、シェーダの `Cell` の 3 か所で揃える。
-- 描画の確認は `build/wren.app/Contents/MacOS/wren --snapshot <png> [--input <文字列>]` で 1 フレームを PNG に書き出して見る。
+- 描画の確認は `build/wren.app/Contents/MacOS/wren --snapshot <png> [--input <文字列>]` で 1 フレームを PNG に書き出して見る。キー入力の確認は `--type <文字列>`、計測は `--bench-cat <ファイル>` と `--bench-keys`（どれもウィンドウが開く）。
 - `swift build` と PTY を使うテスト（`zig build test`）は Claude Code のサンドボックスの中では動かない。
 
 ## 守ること

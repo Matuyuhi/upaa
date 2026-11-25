@@ -14,6 +14,12 @@ final class TerminalView: MTKView, MTKViewDelegate {
     /// keyDown の処理中に IME から確定した文字を集める。nil は keyDown の外。
     private var insertedText: String?
 
+    /// 計測用。これまでに描いたフレームの数と、CPU 側で 1 フレームを組み立てるのにかかった時間の合計（秒）。
+    private(set) var frameStats: (count: Int, seconds: Double) = (0, 0)
+    /// 計測用。キーを受け取ってから、その次に描いたフレームが画面に出るまでの秒数を受け取る。
+    var onKeyLatency: ((Double) -> Void)?
+    private var pendingKeyTime: TimeInterval?
+
     init(session: TerminalSession, renderer: Renderer) {
         self.session = session
         self.renderer = renderer
@@ -51,11 +57,23 @@ final class TerminalView: MTKView, MTKViewDelegate {
               let drawable = currentDrawable,
               let commandBuffer = commandQueue.makeCommandBuffer()
         else { return }
+        let start = CACurrentMediaTime()
         renderer.draw(
             session: session, commandBuffer: commandBuffer, pass: pass,
             viewport: (Int(drawableSize.width), Int(drawableSize.height)))
+        if let keyTime = pendingKeyTime, let onKeyLatency {
+            pendingKeyTime = nil
+            drawable.addPresentedHandler { presented in
+                // 画面に出なかったフレームは presentedTime が 0 になる。
+                guard presented.presentedTime > 0 else { return }
+                let latency = presented.presentedTime - keyTime
+                DispatchQueue.main.async { onKeyLatency(latency) }
+            }
+        }
         commandBuffer.present(drawable)
         commandBuffer.commit()
+        frameStats.count += 1
+        frameStats.seconds += CACurrentMediaTime() - start
     }
 
     // MARK: キー入力
@@ -68,6 +86,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
             super.keyDown(with: event)
             return
         }
+
+        if onKeyLatency != nil { pendingKeyTime = event.timestamp }
 
         let wasComposing = hasMarkedText()
         insertedText = ""
