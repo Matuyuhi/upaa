@@ -4,5 +4,3 @@ zig-out/
 build/
 .swiftpm/
 vendor/
-.claude/.cc-writes
-.claude/settings.local.json
