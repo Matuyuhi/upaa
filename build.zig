@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) void {
     // libghostty-vt は静的ライブラリには含めず、Swift 側の最終リンクで XCFramework から入れる。
     const lib = b.addLibrary(.{
         .linkage = .static,
-        .name = "wrencore",
+        .name = "uparupacore",
         .root_module = createModule(b, opts),
     });
     // Swift 側のリンカは Zig の compiler_rt を知らないので、静的ライブラリに同梱する。

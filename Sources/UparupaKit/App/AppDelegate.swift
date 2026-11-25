@@ -16,7 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let renderer = try? Renderer(device: device, fontName: Defaults.fontName, fontSize: Defaults.fontSize, scale: scale),
               let session = TerminalSession(cols: UInt16(Defaults.cols), rows: UInt16(Defaults.rows))
         else {
-            NSLog("wren: 端末を起動できない")
+            NSLog("uparupa: 端末を起動できない")
             NSApp.terminate(nil)
             return
         }
@@ -30,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "wren"
+        window.title = "uparupa"
         // セル 1 つ分ずつ大きさが変わるようにする。
         window.contentResizeIncrements = NSSize(
             width: Double(renderer.cellSize.width) / scale, height: Double(renderer.cellSize.height) / scale)

@@ -1,6 +1,6 @@
 import AppKit
 
-/// アプリの入口。実行ファイル（Sources/wren/main.swift）からこれだけを呼ぶ。
+/// アプリの入口。実行ファイル（Sources/uparupa/main.swift）からこれだけを呼ぶ。
 ///
 /// 引数:
 ///   --check                              リンクの確認をして結果を出力し、終了する
@@ -8,7 +8,7 @@ import AppKit
 ///   --type <文字列>                       ウィンドウを開いて文字列をキー入力として流し、画面の文字を出力して終了する
 ///   --bench-cat <ファイル>                ウィンドウを開いてファイルを cat し、かかった時間を出力して終了する
 ///   --bench-keys                         ウィンドウを開いて 1 文字ずつ打ち、キーから表示までの時間を出力して終了する
-public enum WrenApp {
+public enum UparupaApp {
     public static func main() -> Never {
         let arguments = CommandLine.arguments
 
@@ -56,7 +56,7 @@ public enum WrenApp {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
         appItem.submenu = NSMenu()
-        appItem.submenu?.addItem(withTitle: "Quit wren", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu?.addItem(withTitle: "Quit uparupa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         mainMenu.addItem(appItem)
         return mainMenu
     }

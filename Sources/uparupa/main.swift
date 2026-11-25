@@ -1,0 +1,3 @@
+import UparupaKit
+
+UparupaApp.main()

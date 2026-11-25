@@ -1,7 +1,7 @@
 .{
-    .name = .wren,
+    .name = .uparupa,
     .version = "0.0.0",
-    .fingerprint = 0x325928baa621f3fb,
+    .fingerprint = 0xaca995a58032441,
     .minimum_zig_version = "0.17.0",
     .paths = .{
         "build.zig",

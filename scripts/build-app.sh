@@ -1,5 +1,5 @@
 #!/bin/sh
-# build/wren.app を組み立てる。zig build → swift build → バンドルに詰める。
+# build/uparupa.app を組み立てる。zig build → swift build → バンドルに詰める。
 # CONFIG=release で最適化ビルド（既定は debug）。
 set -eu
 cd "$(dirname "$0")/.."
@@ -20,10 +20,10 @@ set -- -c "$CONFIG" --arch arm64 \
 swift build "$@"
 BIN_DIR="$(swift build "$@" --show-bin-path)"
 
-APP=build/wren.app
+APP=build/uparupa.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
-cp "$BIN_DIR/wren" "$APP/Contents/MacOS/wren"
+cp "$BIN_DIR/uparupa" "$APP/Contents/MacOS/uparupa"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
 # シェーダは default.metallib にして Resources に置く（Swift 側は makeDefaultLibrary で読む）。

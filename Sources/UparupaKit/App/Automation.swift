@@ -43,11 +43,11 @@ enum Automation {
 
     private static func benchCat(_ path: String, window: NSWindow, view: TerminalView, session: TerminalSession) {
         // 入力のエコーと区別できるよう、終わりの目印はシェルに計算させる。
-        type("cat \(path); echo wren-done-$((40+2))\n", into: window)
+        type("cat \(path); echo uparupa-done-$((40+2))\n", into: window)
         let start = CACurrentMediaTime()
         let framesBefore = view.frameStats
         Timer.scheduledTimer(withTimeInterval: 0.005, repeats: true) { _ in
-            guard session.plainText().contains("wren-done-42") else { return }
+            guard session.plainText().contains("uparupa-done-42") else { return }
             let elapsed = CACurrentMediaTime() - start
             let bytes = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
             let frames = view.frameStats.count - framesBefore.count

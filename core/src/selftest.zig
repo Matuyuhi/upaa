@@ -39,7 +39,7 @@ pub fn vtPlainText(input: []const u8, out: []u8) ?usize {
     return n;
 }
 
-/// Sources/CWrenCore/wren_core.h の WrenGlyphInfo と同じ並び。
+/// Sources/CUparupaCore/uparupa_core.h の UparupaGlyphInfo と同じ並び。
 pub const GlyphInfo = extern struct {
     glyph: u16,
     advance: f64,

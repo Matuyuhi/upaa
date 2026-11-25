@@ -1,3 +1,0 @@
-import WrenKit
-
-WrenApp.main()

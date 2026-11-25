@@ -32,7 +32,7 @@ pub const Callbacks = extern struct {
     on_exit: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
 };
 
-/// キーを 1 回押した（離した）こと。Sources/CWrenCore の WrenKeyEvent と同じ並び。
+/// キーを 1 回押した（離した）こと。Sources/CUparupaCore の UparupaKeyEvent と同じ並び。
 pub const KeyEvent = extern struct {
     /// macOS の仮想キーコード。
     key_code: u16,
@@ -245,9 +245,9 @@ test "shell output reaches the terminal" {
     defer self.destroy();
 
     // 入力のエコーと区別できるよう、シェルに計算させた結果を待つ。
-    self.write("echo wren-$((40+2))\n");
+    self.write("echo uparupa-$((40+2))\n");
     var out: [4096]u8 = undefined;
-    try self.waitForText("wren-42", &out);
+    try self.waitForText("uparupa-42", &out);
     try std.testing.expect(self.takeDirty());
 }
 

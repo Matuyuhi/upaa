@@ -1,9 +1,9 @@
-# wren 引き継ぎ資料
+# uparupa 引き継ぎ資料
 
 作成日: 2026-11-25（同日、言語構成の決定を反映して改訂）
 対象: この資料をもとに実装を進める Claude Code
 
-wren は macOS 専用の自作ターミナルエミュレータ。名前はミソサザイ（小さいのによくさえずる鳥）から。
+uparupa は macOS 専用の自作ターミナルエミュレータ。名前はウーパールーパーから。2026-11-26 までは wren（ミソサザイ）という名前だった。作業ディレクトリの名前などに wren が残っている場合がある。
 この資料は、実装前の会話で決まったこと、一次情報で確認できたこと、確認できていないことを分けて書いている。
 コードはまだ 1 行もない。
 
@@ -13,7 +13,7 @@ wren は macOS 専用の自作ターミナルエミュレータ。名前はミ�
 
 | 項目 | 決定 |
 |---|---|
-| 名前 | wren |
+| 名前 | uparupa（2026-11-26 に wren から変更） |
 | 目的 | 普段使いできるターミナルにする（学習用の最小実装で終わらせない） |
 | 対象 OS | macOS のみ |
 | 言語の構成 | Swift と Zig の混成。UI・IME・Metal の呼び出しは Swift、それ以外の中核は Zig |
@@ -83,8 +83,8 @@ Zig を選んだ理由は「Zig で書きたい」というユーザーの希望
 
 ### M0 で確認したこと（2026-11-25）
 
-- Swift と Zig のつなぎ方: Zig が静的ライブラリ `zig-out/lib/libwrencore.a` を作り（compiler_rt を同梱）、SwiftPM の C ターゲット `CWrenCore`（手書きの C ヘッダ `include/wren_core.h` と空の `shim.c`）の `linkedLibrary("wrencore")` でリンクする。検索パスは `Package.swift` から `-L zig-out/lib` で渡す。Zig のコードだけを変えたときも、C ヘッダだけを変えたときも、`scripts/build-app.sh` で反映されることを確認した。最初は `systemLibrary` ターゲットにしたが、ヘッダを変えても debug ビルドで Swift が再コンパイルされなかったのでやめた。
-- libghostty-vt: Zig は `<ghostty/vt.h>` を translate-c で取り込んで C API を呼ぶだけで、ライブラリ本体は Swift 側の最終リンクで `binaryTarget`（XCFramework）から入れる。Zig のテストの実行ファイルは、XCFramework の中の `libghostty-vt.a`（arm64 と x86_64 のファット）を `addObjectFile` で直接指してリンクできた。wren の静的ライブラリと libghostty-vt の両方に compiler_rt が入っているが、リンクでシンボルの重複エラーは出ていない。
+- Swift と Zig のつなぎ方: Zig が静的ライブラリ `zig-out/lib/libuparupacore.a` を作り（compiler_rt を同梱）、SwiftPM の C ターゲット `CUparupaCore`（手書きの C ヘッダ `include/uparupa_core.h` と空の `shim.c`）の `linkedLibrary("uparupacore")` でリンクする。検索パスは `Package.swift` から `-L zig-out/lib` で渡す。Zig のコードだけを変えたときも、C ヘッダだけを変えたときも、`scripts/build-app.sh` で反映されることを確認した。最初は `systemLibrary` ターゲットにしたが、ヘッダを変えても debug ビルドで Swift が再コンパイルされなかったのでやめた。
+- libghostty-vt: Zig は `<ghostty/vt.h>` を translate-c で取り込んで C API を呼ぶだけで、ライブラリ本体は Swift 側の最終リンクで `binaryTarget`（XCFramework）から入れる。Zig のテストの実行ファイルは、XCFramework の中の `libghostty-vt.a`（arm64 と x86_64 のファット）を `addObjectFile` で直接指してリンクできた。uparupa の静的ライブラリと libghostty-vt の両方に compiler_rt が入っているが、リンクでシンボルの重複エラーは出ていない。
 - Zig から libghostty-vt で 80x24 の端末を作って VT のバイト列を書き、formatter でプレーンテキストに戻せた（`Hello, \x1b[1;32mworld\x1b[0m!\r\nあいう` → `Hello, world!\nあいう`）。
 - ターゲットを `aarch64-macos.13.0` と明示すると Zig は SDK を自動で探さず、フレームワークが見つからない。`build.zig` で `xcrun --sdk macosx --show-sdk-path` の結果を検索パスに渡せば足りた。Ghostty の `apple_sdk` に当たる仕組みは今のところ要らない。
 - Zig から CoreText を呼び、Menlo の 'A'（glyph 36）と、フォールバックで HiraginoSans-W3 の「あ」（glyph 843）を取れた。macOS 27.2.1 で、`.app` 内の実行ファイルを直接起動して確認した。
@@ -93,7 +93,7 @@ Zig を選んだ理由は「Zig で書きたい」というユーザーの希望
 
 ### M1 の計測（2026-11-26）
 
-Apple M4 Max、内蔵ディスプレイ（3024 x 1964）、macOS 27.2.1。80 桁 x 24 行のウィンドウで、実際に描画しながら測った。測り方は `wren --bench-cat <ファイル>` と `wren --bench-keys`（`Sources/WrenKit/App/Automation.swift`）。
+Apple M4 Max、内蔵ディスプレイ（3024 x 1964）、macOS 27.2.1。80 桁 x 24 行のウィンドウで、実際に描画しながら測った。測り方は `uparupa --bench-cat <ファイル>` と `uparupa --bench-keys`（`Sources/UparupaKit/App/Automation.swift`）。
 
 | 項目 | 結果 |
 |---|---|
@@ -102,18 +102,18 @@ Apple M4 Max、内蔵ディスプレイ（3024 x 1964）、macOS 27.2.1。80 桁
 | 1 フレームの組み立て（CPU 側。Zig がセルを書き、Swift が描画命令を出すまで） | release で平均 0.13〜0.16 ミリ秒、debug で 0.31〜0.33 ミリ秒 |
 | キーを受け取ってから、その文字を描いたフレームが画面に出るまで | 中央値 23〜28 ミリ秒、最大 31〜36 ミリ秒（60 回 x 2） |
 
-- `cat` の時間は release と debug でほぼ同じだった。wren のコードではなく、libghostty-vt の解釈か PTY の受け渡しで決まっていると見ている（切り分けはしていない）。
+- `cat` の時間は release と debug でほぼ同じだった。uparupa のコードではなく、libghostty-vt の解釈か PTY の受け渡しで決まっていると見ている（切り分けはしていない）。
 - 毎フレーム全セルを書き直す作りのままで、1 フレームの組み立ては 1 ミリ秒に届かない。変更行だけを書く差分描画は、今は要らない。
 - キーから表示までの時間には、シェルが文字をエコーするまでの時間と、画面の更新を待つ時間が入っている。キーボードそのものの遅れと、ディスプレイの応答は入っていない。値が 8 ミリ秒前後の刻みで並ぶので、画面の更新 3 回分ほど待っていると見ている（推測）。短くするなら、`MTKView` の「次の更新で描く」をやめてすぐ描く形にするのが候補。
 - Terminal.app など、ほかのターミナルとの比較はしていない。
 
 ### Ghostty 本体の作り
 
-wren と同じ「Swift + Zig」の混成で作られている。参考にできる。
+uparupa と同じ「Swift + Zig」の混成で作られている。参考にできる。
 
 - macOS アプリ側は Swift（`macos/` 配下に約 200 ファイル）、中核は Zig（`src/` 配下に約 620 ファイル）。
 - PTY（`src/pty.zig`、`src/termio/`）、CoreText を使うフォント処理（`src/font/face/coretext.zig`、`src/font/shaper/coretext.zig`）は Zig 側にある。
-- Metal の描画も Zig 側にあり（`src/renderer/Metal.zig`、`src/renderer/metal/`）、Objective-C ランタイム経由で呼んでいる。wren はここを Swift で書く点が違う。
+- Metal の描画も Zig 側にあり（`src/renderer/Metal.zig`、`src/renderer/metal/`）、Objective-C ランタイム経由で呼んでいる。uparupa はここを Swift で書く点が違う。
 - Apple のヘッダを Zig に取り込む仕組みは `pkg/macos/build.zig` にある。translate-c と、Apple SDK のパスを解決する `apple_sdk` を使い、`linkFramework` でフレームワークをリンクしている。
 
 ### C API の形
@@ -154,9 +154,9 @@ wren と同じ「Swift + Zig」の混成で作られている。参考にでき�
 - （M0 で確認済み）静的ライブラリ `libghostty-vt.a`。macOS 向けは arm64 と x86_64 のファット（ほかに iOS 向け 2 つ）。各オブジェクトの `minos` は 13.0。モジュール名は `GhosttyVt`（`module.modulemap` の umbrella header は `ghostty/vt.h`）。1.0.2 の zip の SHA-256 は `15477209ce86ad1c944f217e925c84acf796ecc51aba7a935aaa1a7769890bd6` で、minisign の署名も確認した。元の記述: XCFramework の中身。この資料を作った環境からは `release.files.ghostty.org` に接続できず、ダウンロードして確かめられなかった。含まれるアーキテクチャ（arm64 / x86_64）、静的か動的か、モジュール名が本当に `GhosttyVt` か、SHA-256 の値は未確認。
 - （M0 で確認済み。中の `.a` を直接指せばリンクできる）XCFramework 内のライブラリを Zig のビルドからリンクできるか。XCFramework は Xcode と SwiftPM 向けの形式なので、Zig 側は中のライブラリファイルを直接指す必要があるかもしれない。
 - Zig 0.17.0 が対応する macOS の最低バージョン。リリースノートに「Darwin 15.0+」とあるが、macOS のどの版に当たるかを確かめていない。
-- libghostty-vt の Zig API が C ABI と同じ安定保証の対象かどうか。wren は C API を使うので影響は小さい。
+- libghostty-vt の Zig API が C ABI と同じ安定保証の対象かどうか。uparupa は C API を使うので影響は小さい。
 - スレッド安全性の正確な範囲。第三者の Rust バインディングの文書には「特記がない限りスレッドセーフではない」とある。公式ヘッダの記述を読んで確かめること。
-- `wren` という名前の重複。同名のスクリプト言語 Wren があり、CLI は Homebrew で `wren-cli` として配布されている。ターミナルエミュレータでは 1 回の検索で見つからなかったが、網羅的には調べていない。
+- `uparupa` という名前の重複。調べていない。（前の名前 wren には同名のスクリプト言語があった。）
 - 性能。何も測っていない。この資料の性能に関する記述はすべて見立てである。
 
 ## 4. 構成の案
