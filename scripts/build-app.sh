@@ -12,8 +12,13 @@ case "$CONFIG" in
 esac
 
 zig build -Doptimize="$ZIG_OPT"
-swift build -c "$CONFIG" --arch arm64
-BIN_DIR="$(swift build -c "$CONFIG" --arch arm64 --show-bin-path)"
+# SwiftPM のリンクは SDK のバージョンを最低 OS と同じ 13.0 と記録してしまう。
+# AppKit はこの値で振る舞いを切り替えるので、実際の SDK のバージョンを渡す。
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+set -- -c "$CONFIG" --arch arm64 \
+  -Xlinker -platform_version -Xlinker macos -Xlinker 13.0 -Xlinker "$SDK_VERSION"
+swift build "$@"
+BIN_DIR="$(swift build "$@" --show-bin-path)"
 
 APP=build/wren.app
 rm -rf "$APP"
