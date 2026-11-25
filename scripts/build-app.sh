@@ -25,6 +25,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN_DIR/wren" "$APP/Contents/MacOS/wren"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+
+# シェーダは default.metallib にして Resources に置く（Swift 側は makeDefaultLibrary で読む）。
+mkdir -p "$APP/Contents/Resources" build/shaders
+xcrun -sdk macosx metal -c Shaders/terminal.metal -mmacosx-version-min=13.0 -o build/shaders/terminal.air
+xcrun -sdk macosx metallib build/shaders/terminal.air -o "$APP/Contents/Resources/default.metallib"
 codesign --force --sign - "$APP"
 
 echo "$APP"

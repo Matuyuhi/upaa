@@ -17,10 +17,11 @@ macOS 専用の自作ターミナルエミュレータ。Swift（AppKit）と Zi
 ## 構成
 
 - `core/src/` — Zig の中核。C に公開する関数（`export fn`）は `root.zig` だけに置き、中身は役割ごとのフォルダに書く。
-  - `c/` translate-c で取り込むヘッダ、`term/` 端末セッション（PTY、読み取りスレッド、libghostty-vt）、`selftest.zig` リンクの確認用。
-  - 予定: `font/`（フォントとグリフのアトラス）、`render/`（Metal に渡すセルのデータの組み立て）。
+  - `c/` translate-c で取り込むヘッダ、`term/` 端末セッション（PTY、読み取りスレッド、libghostty-vt）、`font/` フォントとグリフのアトラス、`render/` Metal に渡すセルのデータの組み立て、`selftest.zig` リンクの確認用。
 - `Sources/CWrenCore/` — Zig の関数の C ヘッダ。`root.zig` と対で直し、形を変えたら ABI の番号を両方で上げる。
-- `Sources/WrenKit/` — Swift の中身（`App/`、`SelfTest/`。予定: `Terminal/`、`Render/`）。`Sources/wren/` は起動するだけ。
+- `Sources/WrenKit/` — Swift の中身（`App/`、`Terminal/`、`Render/`、`SelfTest/`）。`Sources/wren/` は起動するだけ。
+- `Shaders/` — Metal のシェーダ。`scripts/build-app.sh` がコンパイルして `.app` に入れる。セルのデータの並びは `core/src/render/Cell.zig`、C ヘッダの `WrenCell`、シェーダの `Cell` の 3 か所で揃える。
+- 描画の確認は `build/wren.app/Contents/MacOS/wren --snapshot <png> [--input <文字列>]` で 1 フレームを PNG に書き出して見る。
 - `swift build` と PTY を使うテスト（`zig build test`）は Claude Code のサンドボックスの中では動かない。
 
 ## 守ること

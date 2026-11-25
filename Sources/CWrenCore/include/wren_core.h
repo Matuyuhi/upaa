@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define WREN_CORE_ABI_VERSION 3
+#define WREN_CORE_ABI_VERSION 4
 
 uint32_t wren_core_abi_version(void);
 
@@ -31,6 +31,51 @@ void wren_session_resize(WrenSession *session, uint16_t cols, uint16_t rows, uin
 bool wren_session_take_dirty(WrenSession *session);
 // 画面のプレーンテキスト。戻り値は本来の長さで、cap より長い分は切り捨てる。失敗したら -1。
 ptrdiff_t wren_session_plain_text(WrenSession *session, uint8_t *out, size_t cap);
+
+// 描画（フォント、グリフのアトラス、セルのデータの組み立て）
+
+typedef struct WrenRenderer WrenRenderer;
+
+typedef struct {
+    uint32_t cell_width;
+    uint32_t cell_height;
+    uint32_t baseline;
+} WrenMetrics;
+
+// Metal に渡す 1 セル分のデータ。Shaders/terminal.metal の Cell と同じ並び（24 バイト）。
+typedef struct {
+    uint16_t col;
+    uint16_t row;
+    // アトラス内のグリフの位置と大きさ。大きさ 0 は描くものが無い。
+    uint16_t glyph_x;
+    uint16_t glyph_y;
+    uint16_t glyph_width;
+    uint16_t glyph_height;
+    // セルの左上から、グリフの画像の左上まで。
+    int16_t glyph_offset_x;
+    int16_t glyph_offset_y;
+    uint8_t fg[4];
+    uint8_t bg[4];
+} WrenCell;
+
+typedef struct {
+    uint32_t cell_count;
+    uint16_t cols;
+    uint16_t rows;
+    uint8_t background[4];
+    // アトラスの画像が変わるたびに増える。前回と違えばテクスチャを更新する。
+    uint64_t atlas_generation;
+} WrenFrame;
+
+// font_size_px は拡大率（Retina なら 2）を掛けたあとのピクセル数。失敗したら NULL。
+WrenRenderer *wren_renderer_new(const char *font_name, double font_size_px);
+void wren_renderer_free(WrenRenderer *renderer);
+WrenMetrics wren_renderer_metrics(WrenRenderer *renderer);
+// アトラスの画像。1 ピクセル 1 バイトで、一辺は wren_renderer_atlas_size ピクセル。
+const uint8_t *wren_renderer_atlas_pixels(WrenRenderer *renderer);
+uint32_t wren_renderer_atlas_size(void);
+// session の今の画面を cells に書く。cells は Metal のバッファの中身を直接指してよい。
+WrenFrame wren_renderer_frame(WrenRenderer *renderer, WrenSession *session, WrenCell *cells, size_t cap);
 
 // リンクの確認（--check）
 

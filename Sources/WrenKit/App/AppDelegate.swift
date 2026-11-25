@@ -1,36 +1,32 @@
 import AppKit
+import Metal
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
-    private let text: String
-
-    init(text: String) {
-        self.text = text
-    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let label = NSTextField(wrappingLabelWithString: text)
-        label.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-        label.isSelectable = true
-        label.translatesAutoresizingMaskIntoConstraints = false
+        let scale = Double(NSScreen.main?.backingScaleFactor ?? 2)
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let renderer = try? Renderer(device: device, fontName: Defaults.fontName, fontSize: Defaults.fontSize, scale: scale),
+              let session = TerminalSession(cols: UInt16(Defaults.cols), rows: UInt16(Defaults.rows))
+        else {
+            NSLog("wren: 端末を起動できない")
+            NSApp.terminate(nil)
+            return
+        }
+        session.onExit = { NSApp.terminate(nil) }
 
-        let content = NSView()
-        content.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            label.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            label.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
-            label.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -16),
-        ])
-
+        let size = NSSize(
+            width: Double(Defaults.cols * renderer.cellSize.width) / scale,
+            height: Double(Defaults.rows * renderer.cellSize.height) / scale)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 260),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "wren — M0"
-        window.contentView = content
+        window.title = "wren"
+        window.contentView = TerminalView(session: session, renderer: renderer)
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

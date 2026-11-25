@@ -93,6 +93,16 @@ pub fn takeDirty(self: *Session) bool {
     return self.dirty.swap(false, .acq_rel);
 }
 
+/// 描画用の状態を今の画面に合わせる。端末に触るあいだだけロックを持つ。
+pub fn updateRenderState(self: *Session, state: vt.GhosttyRenderState) bool {
+    {
+        self.lock();
+        defer self.unlock();
+        if (vt.ghostty_render_state_begin_update(state, self.terminal) != vt.GHOSTTY_SUCCESS) return false;
+    }
+    return vt.ghostty_render_state_end_update(state) == vt.GHOSTTY_SUCCESS;
+}
+
 /// 画面をプレーンテキストにして out に書く。戻り値は本来の長さ。
 pub fn plainText(self: *Session, out: []u8) ?usize {
     self.lock();
