@@ -14,6 +14,15 @@ macOS 専用の自作ターミナルエミュレータ。Swift（AppKit）と Zi
 - 描画は Metal、グリフの生成は CoreText。
 - 日本語の表示と IME は後回しにしない。
 
+## 構成
+
+- `core/src/` — Zig の中核。C に公開する関数（`export fn`）は `root.zig` だけに置き、中身は役割ごとのフォルダに書く。
+  - `c/` translate-c で取り込むヘッダ、`term/` 端末セッション（PTY、読み取りスレッド、libghostty-vt）、`selftest.zig` リンクの確認用。
+  - 予定: `font/`（フォントとグリフのアトラス）、`render/`（Metal に渡すセルのデータの組み立て）。
+- `Sources/CWrenCore/` — Zig の関数の C ヘッダ。`root.zig` と対で直し、形を変えたら ABI の番号を両方で上げる。
+- `Sources/WrenKit/` — Swift の中身（`App/`、`SelfTest/`。予定: `Terminal/`、`Render/`）。`Sources/wren/` は起動するだけ。
+- `swift build` と PTY を使うテスト（`zig build test`）は Claude Code のサンドボックスの中では動かない。
+
 ## 守ること
 
 - libghostty-vt の関数名や使い方は、タグ `vt-1.0.2` のヘッダ（`include/ghostty/vt/`）と `example/c-vt-*` を正とする。Ghostling は 1.0 より前のコミットに固定されていて、1.0.2 に存在しない関数を呼んでいる。

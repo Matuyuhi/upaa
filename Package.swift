@@ -20,11 +20,13 @@ let package = Package(
                 .linkedFramework("CoreText"),
             ]
         ),
-        .executableTarget(
-            name: "wren",
+        // アプリの中身。実行ファイルと分けてあるのは、テストから import できるようにするため。
+        .target(
+            name: "WrenKit",
             dependencies: ["CWrenCore", "GhosttyVt"],
-            path: "Sources/wren"
+            path: "Sources/WrenKit"
         ),
+        .executableTarget(name: "wren", dependencies: ["WrenKit"], path: "Sources/wren"),
         // Zig 側が呼ぶ libghostty-vt を最終リンクで入れる。scripts/fetch-ghostty-vt.sh が取得する。
         .binaryTarget(name: "GhosttyVt", path: "vendor/ghostty-vt/ghostty-vt.xcframework"),
     ]

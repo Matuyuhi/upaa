@@ -17,16 +17,21 @@ pub fn build(b: *std.Build) void {
         std.mem.trim(u8, b.run(&.{ "xcrun", "--sdk", "macosx", "--show-sdk-path" }), " \n");
 
     const apple = b.addTranslateC(.{
-        .root_source_file = b.path("core/src/apple.h"),
+        .root_source_file = b.path("core/src/c/apple.h"),
         .target = target,
         .optimize = optimize,
     });
     const ghostty = b.addTranslateC(.{
-        .root_source_file = b.path("core/src/ghostty.h"),
+        .root_source_file = b.path("core/src/c/ghostty.h"),
         .target = target,
         .optimize = optimize,
     });
     ghostty.addIncludePath(b.path(ghostty_vt_dir ++ "/Headers"));
+    const posix = b.addTranslateC(.{
+        .root_source_file = b.path("core/src/c/posix.h"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     const opts: ModuleOptions = .{
         .target = target,
@@ -34,6 +39,7 @@ pub fn build(b: *std.Build) void {
         .sdk = sdk,
         .apple = apple.createModule(),
         .ghostty = ghostty.createModule(),
+        .posix = posix.createModule(),
     };
 
     // libghostty-vt は静的ライブラリには含めず、Swift 側の最終リンクで XCFramework から入れる。
@@ -65,6 +71,7 @@ const ModuleOptions = struct {
     sdk: []const u8,
     apple: *std.Build.Module,
     ghostty: *std.Build.Module,
+    posix: *std.Build.Module,
 };
 
 fn createModule(b: *std.Build, opts: ModuleOptions) *std.Build.Module {
@@ -76,6 +83,7 @@ fn createModule(b: *std.Build, opts: ModuleOptions) *std.Build.Module {
         .imports = &.{
             .{ .name = "apple", .module = opts.apple },
             .{ .name = "ghostty", .module = opts.ghostty },
+            .{ .name = "posix", .module = opts.posix },
         },
     });
 }
