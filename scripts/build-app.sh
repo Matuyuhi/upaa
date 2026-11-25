@@ -25,6 +25,13 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN_DIR/uparupa" "$APP/Contents/MacOS/uparupa"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# バージョンは build.zig.zon だけに書いてある。ビルドした実行ファイルに聞いて Info.plist に入れる。
+VERSION="$("$APP/Contents/MacOS/uparupa" --version)"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
+
+mkdir -p "$APP/Contents/Resources/bin"
+cp scripts/uparupa-launcher.sh "$APP/Contents/Resources/bin/uparupa"
+chmod +x "$APP/Contents/Resources/bin/uparupa"
 
 # シェーダは default.metallib にして Resources に置く（Swift 側は makeDefaultLibrary で読む）。
 mkdir -p "$APP/Contents/Resources" build/shaders

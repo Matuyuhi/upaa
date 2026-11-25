@@ -19,7 +19,8 @@ final class TerminalSession {
     }
 
     /// command が nil ならログインシェルを、そうでなければ /bin/sh -c command を起動する。
-    init?(cols: UInt16, rows: UInt16, command: String? = nil) {
+    /// showIntro が true なら、シェルの出力を出す前に起動時の顔を画面に描く。
+    init?(cols: UInt16, rows: UInt16, command: String? = nil, showIntro: Bool = false) {
         let events = Events()
         var callbacks = UparupaSessionCallbacks(
             userdata: Unmanaged.passUnretained(events).toOpaque(),
@@ -32,7 +33,7 @@ final class TerminalSession {
                 DispatchQueue.main.async { events.onExit?() }
             }
         )
-        guard let handle = uparupa_session_new(cols, rows, command, &callbacks) else { return nil }
+        guard let handle = uparupa_session_new(cols, rows, command, showIntro, &callbacks) else { return nil }
         self.handle = handle
         self.events = events
     }
@@ -64,6 +65,11 @@ final class TerminalSession {
 
     func resize(cols: UInt16, rows: UInt16, cellWidth: Int, cellHeight: Int) {
         uparupa_session_resize(handle, cols, rows, UInt32(cellWidth), UInt32(cellHeight))
+    }
+
+    /// 起動時の顔と一緒に出すお知らせ。顔を流し終えたあとに呼んでも何も起きない。
+    func setIntroNote(_ text: String) {
+        uparupa_session_set_intro_note(handle, text)
     }
 
     /// 画面のプレーンテキスト。

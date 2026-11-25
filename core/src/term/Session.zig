@@ -9,6 +9,7 @@ const c = @import("posix");
 const vt = @import("ghostty");
 const Pty = @import("Pty.zig");
 const keymap = @import("keymap.zig");
+const intro = @import("intro.zig");
 
 const alloc = std.heap.c_allocator;
 
@@ -23,6 +24,13 @@ stop_pipe: [2]c_int,
 /// 画面が変わったことをまだ伝えていないときだけ on_wakeup を呼ぶ。takeDirty が戻す。
 dirty: std.atomic.Value(bool) = .init(false),
 callbacks: Callbacks,
+/// 今の画面の大きさ。起動時の顔を中央に置くのに使う。
+size: std.atomic.Value(u32),
+/// シェルの出力を読み始める前に、起動時の顔を描くか。
+show_intro: bool,
+/// 起動時の顔の下と、消えたあとの 1 行目に出すお知らせ（更新があることなど）。mutex で守る。
+intro_note: [160]u8 = undefined,
+intro_note_len: usize = 0,
 
 pub const Callbacks = extern struct {
     userdata: ?*anyopaque = null,
@@ -59,6 +67,8 @@ pub const Options = struct {
     size: Pty.Size,
     /// null ならログインシェル。
     command: ?[*:0]const u8 = null,
+    /// シェルの出力を読み始める前に、起動時の顔を描く。
+    intro: bool = false,
     callbacks: Callbacks = .{},
 };
 
@@ -97,6 +107,8 @@ pub fn create(opts: Options) !*Session {
         .thread = undefined,
         .stop_pipe = stop_pipe,
         .callbacks = opts.callbacks,
+        .size = .init(packSize(opts.size)),
+        .show_intro = opts.intro,
     };
     self.thread = try std.Thread.spawn(.{}, readLoop, .{self});
     return self;
@@ -150,6 +162,24 @@ pub fn resize(self: *Session, size: Pty.Size, cell_width_px: u32, cell_height_px
     defer self.unlock();
     _ = vt.ghostty_terminal_resize(self.terminal, size.cols, size.rows, cell_width_px, cell_height_px);
     self.pty.resize(size);
+    self.size.store(packSize(size), .release);
+}
+
+/// 起動時の顔と一緒に出すお知らせを決める。顔を流し終えたあとに呼んでも何も起きない。
+pub fn setIntroNote(self: *Session, text: []const u8) void {
+    self.lock();
+    defer self.unlock();
+    const n = @min(text.len, self.intro_note.len);
+    @memcpy(self.intro_note[0..n], text[0..n]);
+    self.intro_note_len = n;
+}
+
+fn copyIntroNote(self: *Session, out: []u8) []const u8 {
+    self.lock();
+    defer self.unlock();
+    const n = @min(self.intro_note_len, out.len);
+    @memcpy(out[0..n], self.intro_note[0..n]);
+    return out[0..n];
 }
 
 /// 前回の呼び出しから画面が変わっていれば true。次の on_wakeup を受け取れる状態に戻す。
@@ -194,7 +224,40 @@ fn unlock(self: *Session) void {
     _ = std.c.pthread_mutex_unlock(&self.mutex);
 }
 
+fn packSize(size: Pty.Size) u32 {
+    return @as(u32, size.cols) << 16 | size.rows;
+}
+
+/// 端末に直接書き込み、画面が変わったことを伝える。
+fn feed(self: *Session, bytes: []const u8) void {
+    self.lock();
+    vt.ghostty_terminal_vt_write(self.terminal, bytes.ptr, bytes.len);
+    self.unlock();
+
+    if (!self.dirty.swap(true, .acq_rel)) {
+        if (self.callbacks.on_wakeup) |f| f(self.callbacks.userdata);
+    }
+}
+
+/// 起動時の顔を 1 コマずつ描く。その間のシェルの出力は PTY に溜まっていて、終わってから読む。
+/// 途中で止めるよう言われたら false。
+fn playIntro(self: *Session) bool {
+    var buf: [1024]u8 = undefined;
+    var note_buf: [160]u8 = undefined;
+    var stop = [_]c.struct_pollfd{.{ .fd = self.stop_pipe[0], .events = c.POLLIN, .revents = 0 }};
+    for (0..intro.frame_count) |index| {
+        const size = self.size.load(.acquire);
+        const note = self.copyIntroNote(&note_buf);
+        self.feed(intro.frame(&buf, @intCast(size >> 16), @truncate(size), index, note));
+        if (c.poll(&stop, 1, intro.frame_ms) > 0) return false;
+    }
+    self.feed(intro.finish(&buf, self.copyIntroNote(&note_buf)));
+    return true;
+}
+
 fn readLoop(self: *Session) void {
+    if (self.show_intro and !self.playIntro()) return;
+
     var buf: [64 * 1024]u8 = undefined;
     var fds = [_]c.struct_pollfd{
         .{ .fd = self.pty.master, .events = c.POLLIN, .revents = 0 },
@@ -212,13 +275,7 @@ fn readLoop(self: *Session) void {
         // 子が終了すると 0 か EIO が返る。
         if (n <= 0) break;
 
-        self.lock();
-        vt.ghostty_terminal_vt_write(self.terminal, &buf, @intCast(n));
-        self.unlock();
-
-        if (!self.dirty.swap(true, .acq_rel)) {
-            if (self.callbacks.on_wakeup) |f| f(self.callbacks.userdata);
-        }
+        self.feed(buf[0..@intCast(n)]);
     }
     if (self.callbacks.on_exit) |f| f(self.callbacks.userdata);
 }
@@ -278,4 +335,28 @@ test "keys are encoded for the child" {
     self.typeText("echo key-$((1+1))");
     self.key(.{ .key_code = 36, .action = .press });
     try self.waitForText("key-2", &out);
+}
+
+test "intro is drawn before the shell output" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "echo after-intro; sleep 5", .intro = true });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+
+    try self.waitForText("uparupa", &out);
+    try std.testing.expect(std.mem.indexOf(u8, &out, "after-intro") == null);
+    // 顔が消えてから、溜まっていたシェルの出力が出る。
+    try self.waitForText("after-intro", &out);
+    const n = self.plainText(&out).?;
+    try std.testing.expect(std.mem.indexOf(u8, out[0..n], "uparupa") == null);
+}
+
+test "intro note stays on the first line after the face is gone" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "echo after-intro; sleep 5", .intro = true });
+    defer self.destroy();
+    self.setIntroNote("v9.9.9 is out");
+    var out: [4096]u8 = undefined;
+
+    try self.waitForText("after-intro", &out);
+    const n = self.plainText(&out).?;
+    try std.testing.expect(std.mem.startsWith(u8, out[0..n], "v9.9.9 is out\nafter-intro"));
 }

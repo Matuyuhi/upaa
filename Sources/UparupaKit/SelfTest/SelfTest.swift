@@ -43,7 +43,7 @@ func runSelfTest() -> (lines: [String], ok: Bool) {
     }
 
     // (4) 端末セッション: ログインシェルにコマンドを送り、結果が画面に出るのを待つ
-    if let session = uparupa_session_new(80, 24, nil, nil) {
+    if let session = uparupa_session_new(80, 24, nil, false, nil) {
         defer { uparupa_session_free(session) }
         // 入力のエコーと区別できるよう、シェルに計算させる
         let command = Array("echo uparupa-$((40+2))\n".utf8)

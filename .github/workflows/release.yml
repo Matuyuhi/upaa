@@ -1,0 +1,59 @@
+name: release
+
+# v0.1.0 のようなタグを push すると、テストを通したうえでビルドして GitHub の Releases に置く。
+# バージョンは build.zig.zon の .version に書き、同じ番号のタグを打つ。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: xcode-27
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    timeout-minutes: 30
+    permissions:
+      # Release を作る
+      contents: write
+      # ビルドの出どころの証明（attestation）を付ける
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Zig と minisign を入れる
+        run: |
+          brew install zig minisign
+          zig version | grep -q '^0\.17\.' || { echo "Zig 0.17.x が必要: $(zig version)"; exit 1; }
+
+      - name: Metal Toolchain を入れる
+        run: xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
+
+      - name: libghostty-vt を取得する
+        run: sh scripts/fetch-ghostty-vt.sh
+
+      - name: テスト（release ビルドもここで作る）
+        run: sh scripts/test.sh
+
+      - name: タグとバージョンが合っているか確かめる
+        run: |
+          version="$(build/uparupa.app/Contents/MacOS/uparupa --version)"
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "タグ $GITHUB_REF_NAME と build.zig.zon のバージョン $version が違う"; exit 1; }
+
+      - name: 配るファイルを作る
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent build/uparupa.app dist/uparupa-macos-arm64.zip
+          cd dist && shasum -a 256 uparupa-macos-arm64.zip > SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: dist/uparupa-macos-arm64.zip
+
+      - name: Release を作る
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/uparupa-macos-arm64.zip dist/SHA256SUMS --generate-notes --verify-tag

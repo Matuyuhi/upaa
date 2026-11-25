@@ -1,8 +1,10 @@
 import AppKit
+import CUparupaCore
 
 /// アプリの入口。実行ファイル（Sources/uparupa/main.swift）からこれだけを呼ぶ。
 ///
 /// 引数:
+///   --version                            バージョンを出力し、終了する
 ///   --check                              リンクの確認をして結果を出力し、終了する
 ///   --snapshot <png> [--command <コマンド>] [--input <文字列>]
 ///                                        シェル（--command があればそのコマンド）に文字列を送ったあとの画面を PNG に書き出し、終了する
@@ -10,6 +12,7 @@ import AppKit
 ///                                        2 枚の PNG を比べ、違うピクセルの割合が上限（既定 0.01）を超えたら失敗する
 ///   --bench-headless <ファイル> [--max-frame-ms <ミリ秒>] [--min-mb-per-s <MB/秒>]
 ///                                        ウィンドウなしでファイルを cat する速さと 1 フレームの組み立て時間を測り、上限・下限を外れたら失敗する
+///   --intro-vt <番号>                    起動時の顔の 1 コマ（エスケープシーケンス）を標準出力に書き、終了する
 ///   --type <文字列>                       ウィンドウを開いて文字列をキー入力として流し、画面の文字を出力して終了する
 ///   --bench-cat <ファイル>                ウィンドウを開いてファイルを cat し、かかった時間を出力して終了する
 ///   --bench-keys                         ウィンドウを開いて 1 文字ずつ打ち、キーから表示までの時間を出力して終了する
@@ -17,10 +20,22 @@ public enum UparupaApp {
     public static func main() -> Never {
         let arguments = CommandLine.arguments
 
+        if arguments.contains("--version") {
+            print(String(cString: uparupa_version()))
+            exit(0)
+        }
+
         if arguments.contains("--check") {
             let report = runSelfTest()
             for line in report.lines { print(line) }
             exit(report.ok ? 0 : 1)
+        }
+
+        if let index = value(after: "--intro-vt", in: arguments).flatMap(Int.init) {
+            var buffer = [UInt8](repeating: 0, count: 2048)
+            let length = uparupa_intro_frame(UInt16(Defaults.cols), UInt16(Defaults.rows), index, &buffer, buffer.count)
+            FileHandle.standardOutput.write(Data(buffer.prefix(length)))
+            exit(0)
         }
 
         do {

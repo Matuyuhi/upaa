@@ -3,6 +3,8 @@
 const std = @import("std");
 const selftest = @import("selftest.zig");
 const Session = @import("term/Session.zig");
+const intro = @import("term/intro.zig");
+const version = @import("version.zig");
 const Renderer = @import("render/Renderer.zig");
 const Cell = @import("render/Cell.zig").Cell;
 const Frame = @import("render/Frame.zig");
@@ -12,6 +14,7 @@ const Atlas = @import("font/Atlas.zig");
 comptime {
     _ = @import("term/Pty.zig");
     _ = @import("term/keymap.zig");
+    _ = @import("term/intro.zig");
     _ = @import("font/Face.zig");
     _ = @import("font/Atlas.zig");
     _ = @import("render/Frame.zig");
@@ -20,16 +23,28 @@ comptime {
 /// Swift 側のヘッダと食い違っていないかを起動時に確かめるための番号。
 /// 公開する関数や構造体の形を変えたら、ヘッダの UPARUPA_CORE_ABI_VERSION と一緒に上げる。
 export fn uparupa_core_abi_version() u32 {
-    return 6;
+    return 8;
+}
+
+/// uparupa 自身のバージョン（build.zig.zon の .version）。
+export fn uparupa_version() [*:0]const u8 {
+    return version.current.ptr;
+}
+
+/// candidate（"v0.2.0" の形）が今のバージョンより新しければ true。
+export fn uparupa_version_is_newer(candidate: [*:0]const u8) bool {
+    return version.isNewer(std.mem.span(candidate));
 }
 
 // 端末セッション
 
 /// command が null ならログインシェル、そうでなければ /bin/sh -c command を起動する。
-export fn uparupa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, callbacks: ?*const Session.Callbacks) ?*Session {
+/// show_intro が true なら、シェルの出力を出す前に起動時の顔を描く。
+export fn uparupa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, show_intro: bool, callbacks: ?*const Session.Callbacks) ?*Session {
     return Session.create(.{
         .size = .{ .cols = cols, .rows = rows },
         .command = command,
+        .intro = show_intro,
         .callbacks = if (callbacks) |cb| cb.* else .{},
     }) catch null;
 }
@@ -55,6 +70,11 @@ export fn uparupa_session_resize(session: *Session, cols: u16, rows: u16, cell_w
     }, cell_width_px, cell_height_px);
 }
 
+/// 起動時の顔と一緒に出すお知らせ。顔を流し終えたあとに呼んでも何も起きない。
+export fn uparupa_session_set_intro_note(session: *Session, text: [*:0]const u8) void {
+    session.setIntroNote(std.mem.span(text));
+}
+
 export fn uparupa_session_take_dirty(session: *Session) bool {
     return session.takeDirty();
 }
@@ -62,6 +82,15 @@ export fn uparupa_session_take_dirty(session: *Session) bool {
 /// 戻り値は本来の長さで、cap より長い分は切り捨てる。失敗したら -1。
 export fn uparupa_session_plain_text(session: *Session, out: [*]u8, cap: usize) isize {
     return @intCast(session.plainText(out[0..cap]) orelse return -1);
+}
+
+/// 起動時の顔の index 番目のコマ（エスケープシーケンス）を out に書き、長さを返す。見た目の確認用。
+export fn uparupa_intro_frame(cols: u16, rows: u16, index: usize, out: [*]u8, cap: usize) usize {
+    return intro.frame(out[0..cap], cols, rows, index, "").len;
+}
+
+export fn uparupa_intro_frame_count() usize {
+    return intro.frame_count;
 }
 
 // 描画

@@ -6,9 +6,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define UPARUPA_CORE_ABI_VERSION 6
+#define UPARUPA_CORE_ABI_VERSION 8
 
 uint32_t uparupa_core_abi_version(void);
+
+// uparupa 自身のバージョン（"0.1.0" の形）。値は build.zig.zon の .version から来る。
+const char *uparupa_version(void);
+// candidate（"v0.2.0" や "0.2.0" の形）が今のバージョンより新しければ true。読めない形なら false。
+bool uparupa_version_is_newer(const char *candidate);
 
 // 端末セッション（PTY、シェル、libghostty-vt の端末をまとめたもの）
 
@@ -24,7 +29,11 @@ typedef struct {
 } UparupaSessionCallbacks;
 
 // command が NULL ならログインシェルを、そうでなければ /bin/sh -c command を起動する。失敗したら NULL。
-UparupaSession *uparupa_session_new(uint16_t cols, uint16_t rows, const char *command, const UparupaSessionCallbacks *callbacks);
+// show_intro が true なら、シェルの出力を出す前に、起動時の顔（文字で組んだウーパールーパー）を画面に描く。
+UparupaSession *uparupa_session_new(uint16_t cols, uint16_t rows, const char *command, bool show_intro, const UparupaSessionCallbacks *callbacks);
+// 起動時の顔の index 番目のコマ（エスケープシーケンス）を out に書き、長さを返す。見た目の確認用。
+size_t uparupa_intro_frame(uint16_t cols, uint16_t rows, size_t index, uint8_t *out, size_t cap);
+size_t uparupa_intro_frame_count(void);
 void uparupa_session_free(UparupaSession *session);
 void uparupa_session_write(UparupaSession *session, const uint8_t *data, size_t len);
 // キーを 1 回押した（離した）こと。
@@ -48,6 +57,8 @@ enum { UPARUPA_MOD_SHIFT = 1 << 0, UPARUPA_MOD_CTRL = 1 << 1, UPARUPA_MOD_ALT = 
 // キー入力を、端末の今のモードに合わせたバイト列にしてシェルへ送る。
 void uparupa_session_key(UparupaSession *session, const UparupaKeyEvent *event);
 void uparupa_session_resize(UparupaSession *session, uint16_t cols, uint16_t rows, uint32_t cell_width_px, uint32_t cell_height_px);
+// 起動時の顔の下と、顔が消えたあとの 1 行目に出すお知らせ。顔を流し終えたあとに呼んでも何も起きない。
+void uparupa_session_set_intro_note(UparupaSession *session, const char *text);
 bool uparupa_session_take_dirty(UparupaSession *session);
 // 画面のプレーンテキスト。戻り値は本来の長さで、cap より長い分は切り捨てる。失敗したら -1。
 ptrdiff_t uparupa_session_plain_text(UparupaSession *session, uint8_t *out, size_t cap);

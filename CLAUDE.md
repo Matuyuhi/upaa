@@ -25,6 +25,13 @@ macOS 専用の自作ターミナルエミュレータ。Swift（AppKit）と Zi
 - テストは `sh scripts/test.sh`（Zig のテスト、`--check`、`tests/fixtures/*.vt` の画面と `tests/snapshots/` の基準の画像の比較、速さの下限・上限）。描画を意図して変えたときは `UPDATE_SNAPSHOTS=1 sh scripts/test.sh` で基準を置き換え、画像を見てから commit する。GitHub Actions（`.github/workflows/test.yml`）も同じスクリプトを呼ぶ。
 - `swift build` と PTY を使うテスト（`zig build test`）は Claude Code のサンドボックスの中では動かない。
 
+## バージョンとリリース
+
+- バージョンは `build.zig.zon` の `.version` だけに書く。Zig のコード、Swift（`uparupa --version`、更新確認）、`.app` の `Info.plist` はここから取る。ほかの場所に番号を書かない。
+- リリースは、`build.zig.zon` の番号を上げて commit し、同じ番号のタグ（`v0.1.0` の形）を push する。`.github/workflows/release.yml` がテストを通してから zip と `SHA256SUMS` を GitHub の Releases に置く。タグと番号が違えば失敗する。
+- インストールは `install.sh`（`curl ... | sh`）。`~/Applications/uparupa.app` と `~/.local/bin/uparupa` を置く。`uparupa` コマンドの中身は `scripts/uparupa-launcher.sh`。
+- 起動時の更新確認は `Sources/UparupaKit/App/UpdateCheck.swift`。1 日 1 回だけ GitHub に問い合わせ、知らせるだけで更新はしない。
+
 ## 守ること
 
 - libghostty-vt の関数名や使い方は、タグ `vt-1.0.2` のヘッダ（`include/ghostty/vt/`）と `example/c-vt-*` を正とする。Ghostling は 1.0 より前のコミットに固定されていて、1.0.2 に存在しない関数を呼んでいる。

@@ -1,4 +1,6 @@
 const std = @import("std");
+// バージョンは build.zig.zon の .version だけに書く。ここから Zig のコードと Swift に渡る。
+const package = @import("build.zig.zon");
 
 /// scripts/fetch-ghostty-vt.sh が展開する XCFramework の macOS 向けの中身。
 const ghostty_vt_dir = "vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64_x86_64";
@@ -33,7 +35,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", package.version);
+
     const opts: ModuleOptions = .{
+        .build_options = build_options,
         .target = target,
         .optimize = optimize,
         .sdk = sdk,
@@ -66,6 +72,7 @@ pub fn build(b: *std.Build) void {
 }
 
 const ModuleOptions = struct {
+    build_options: *std.Build.Step.Options,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     sdk: []const u8,
@@ -75,7 +82,7 @@ const ModuleOptions = struct {
 };
 
 fn createModule(b: *std.Build, opts: ModuleOptions) *std.Build.Module {
-    return b.createModule(.{
+    const mod = b.createModule(.{
         .root_source_file = b.path("core/src/root.zig"),
         .target = opts.target,
         .optimize = opts.optimize,
@@ -86,4 +93,6 @@ fn createModule(b: *std.Build, opts: ModuleOptions) *std.Build.Module {
             .{ .name = "posix", .module = opts.posix },
         },
     });
+    mod.addOptions("build_options", opts.build_options);
+    return mod;
 }
