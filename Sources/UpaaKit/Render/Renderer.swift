@@ -1,7 +1,7 @@
 import CUpaaCore
 import Metal
 
-/// 端末の 1 フレームを Metal で描く。セルのデータは Zig が Metal のバッファに直接書く。
+/// Draws one terminal frame with Metal. Zig writes the cell data directly into the Metal buffer.
 final class Renderer {
     enum SetupError: Error {
         case font
@@ -11,13 +11,14 @@ final class Renderer {
     static let pixelFormat = MTLPixelFormat.bgra8Unorm
 
     let device: MTLDevice
-    /// 1 セルの大きさ（ピクセル）。
+    /// Size of one cell (pixels).
     let cellSize: (width: Int, height: Int)
-    /// グリッドの周りの余白（ピクセル）。x は左右、y は上下。
+    private let underline: SIMD2<Float>
+    /// Margin around the grid (pixels). x is left and right, y is top and bottom.
     let padding: (top: Int, bottom: Int, horizontal: Int)
 
-    /// グリッドの周りの余白（ポイント）。左右と下はウィンドウの角丸で文字が欠けないための量。
-    /// 上はタイトルバーがあって角丸にかからないので、小さくしている。
+    /// Margin around the grid (points). The left, right, and bottom margins keep the text from being clipped by the window's rounded corners.
+    /// The top margin is smaller because the title bar keeps the text away from the rounded corners.
     private static let paddingPoints = (top: 2.0, bottom: 16.0, horizontal: 8.0)
 
     private let handle: OpaquePointer
@@ -27,13 +28,14 @@ final class Renderer {
     private var atlasGeneration: UInt64 = 0
     private var cellBuffer: MTLBuffer?
 
-    /// fontSize はポイント、scale は画面の拡大率（Retina なら 2）。
+    /// fontSize is in points; scale is the screen scale factor (2 on Retina).
     init(device: MTLDevice, fontName: String, fontSize: Double, scale: Double) throws {
         guard let handle = upaa_renderer_new(fontName, fontSize * scale) else { throw SetupError.font }
         self.handle = handle
         self.device = device
         let metrics = upaa_renderer_metrics(handle)
         cellSize = (Int(metrics.cell_width), Int(metrics.cell_height))
+        underline = SIMD2(Float(metrics.underline_offset), Float(metrics.underline_thickness))
         let points = Renderer.paddingPoints
         padding = (
             Int((points.top * scale).rounded()), Int((points.bottom * scale).rounded()),
@@ -44,7 +46,7 @@ final class Renderer {
             library = try device.makeDefaultLibrary(bundle: .main)
         } catch {
             upaa_renderer_free(handle)
-            throw SetupError.metal("default.metallib を読めない: \(error)")
+            throw SetupError.metal("failed to read default.metallib: \(error)")
         }
 
         func pipeline(_ name: String, blending: Bool) throws -> MTLRenderPipelineState {
@@ -70,7 +72,7 @@ final class Renderer {
             backgroundPipeline = try pipeline("background", blending: false)
             glyphPipeline = try pipeline("glyph", blending: true)
             guard let texture = device.makeTexture(descriptor: atlasDescriptor) else {
-                throw SetupError.metal("アトラスのテクスチャを作れない")
+                throw SetupError.metal("failed to create atlas texture")
             }
             atlasTexture = texture
         } catch {
@@ -83,7 +85,7 @@ final class Renderer {
         upaa_renderer_free(handle)
     }
 
-    /// 大きさ size（ピクセル）の描画先に入る桁数と行数。
+    /// Number of columns and rows that fit in a drawing target of size size (pixels).
     func gridSize(for size: (width: Int, height: Int)) -> (cols: Int, rows: Int) {
         (
             max(1, (size.width - 2 * padding.horizontal) / cellSize.width),
@@ -91,19 +93,21 @@ final class Renderer {
         )
     }
 
-    /// cols x rows のグリッドがちょうど入る描画先の大きさ（ピクセル）。
+    /// Size of the drawing target (pixels) that fits a cols x rows grid exactly.
     func pixelSize(cols: Int, rows: Int) -> (width: Int, height: Int) {
         (cols * cellSize.width + 2 * padding.horizontal, rows * cellSize.height + padding.top + padding.bottom)
     }
 
-    /// session の今の画面を pass の描画先に描く。viewport は描画先の大きさ（ピクセル）。
+    /// Draws the session's current screen into the pass's drawing target. viewport is the size of the drawing target (pixels).
+    /// preedit is the text being composed with IME (empty if none).
     func draw(
         session: TerminalSession,
+        preedit: String = "",
         commandBuffer: MTLCommandBuffer,
         pass: MTLRenderPassDescriptor,
         viewport: (width: Int, height: Int)
     ) {
-        // 端からはみ出す分も含めて、描画先に入りうるセルの数だけ場所を用意する。
+        // Allocate room for every cell that could fit in the drawing target, including cells that extend past the edges.
         let capacity = (viewport.width / cellSize.width + 1) * (viewport.height / cellSize.height + 1)
         let stride = MemoryLayout<UpaaCell>.stride
         if cellBuffer == nil || cellBuffer!.length < capacity * stride {
@@ -112,7 +116,8 @@ final class Renderer {
         guard let cellBuffer else { return }
 
         let cells = cellBuffer.contents().bindMemory(to: UpaaCell.self, capacity: capacity)
-        let frame = upaa_renderer_frame(handle, session.handle, cells, capacity)
+        let preeditBytes = Array(preedit.utf8)
+        let frame = upaa_renderer_frame(handle, session.handle, preeditBytes, preeditBytes.count, cells, capacity)
         uploadAtlasIfNeeded(generation: frame.atlas_generation)
 
         let bg = frame.background
@@ -127,7 +132,8 @@ final class Renderer {
             viewport: SIMD2(Float(viewport.width), Float(viewport.height)),
             cell: SIMD2(Float(cellSize.width), Float(cellSize.height)),
             atlas: SIMD2(repeating: Float(atlasTexture.width)),
-            origin: SIMD2(Float(padding.horizontal), Float(padding.top)))
+            origin: SIMD2(Float(padding.horizontal), Float(padding.top)),
+            underline: underline)
         encoder.setVertexBuffer(cellBuffer, offset: 0, index: 0)
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
         encoder.setFragmentTexture(atlasTexture, index: 0)
@@ -150,11 +156,12 @@ final class Renderer {
             bytesPerRow: size)
     }
 
-    /// Shaders/terminal.metal の Uniforms と同じ並び。
+    /// Same layout as Uniforms in Shaders/terminal.metal.
     private struct Uniforms {
         var viewport: SIMD2<Float>
         var cell: SIMD2<Float>
         var atlas: SIMD2<Float>
         var origin: SIMD2<Float>
+        var underline: SIMD2<Float>
     }
 }

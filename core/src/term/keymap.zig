@@ -1,4 +1,4 @@
-//! macOS の仮想キーコード（Carbon の kVK_*）から libghostty-vt のキーへの対応。
+//! Mapping from macOS virtual key codes (Carbon kVK_*) to libghostty-vt keys.
 const std = @import("std");
 const vt = @import("ghostty");
 

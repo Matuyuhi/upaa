@@ -1,10 +1,10 @@
-//! upaa 自身のバージョン。値は build.zig.zon の .version から来る。
+//! upaa's own version. The value comes from .version in build.zig.zon.
 const std = @import("std");
 const build_options = @import("build_options");
 
 pub const current: [:0]const u8 = build_options.version ++ "";
 
-/// candidate（"v0.2.0" や "0.2.0" の形）が今のバージョンより新しければ true。読めない形なら false。
+/// True if candidate ("v0.2.0" or "0.2.0" form) is newer than the current version. False if it cannot be parsed.
 pub fn isNewer(candidate: []const u8) bool {
     const theirs = parse(candidate) orelse return false;
     const ours = parse(current) orelse return false;

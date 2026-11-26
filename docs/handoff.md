@@ -1,138 +1,138 @@
-# upaa 引き継ぎ資料
+# upaa handoff notes
 
-作成日: 2026-11-25（同日、言語構成の決定を反映して改訂）
-対象: この資料をもとに実装を進める Claude Code
+Created: 2026-11-25 (same day; revised to reflect the decision on the language mix)
+Target: Claude Code, which proceeds with implementation based on this document
 
-upaa は macOS 専用の自作ターミナルエミュレータ。名前は wren、uparupa を経て、2026-11-26 に upaa になった。作業ディレクトリの名前などに wren が残っている場合がある。
-この資料は、実装前の会話で決まったこと、一次情報で確認できたこと、確認できていないことを分けて書いている。
-コードはまだ 1 行もない。
+upaa is a homemade terminal emulator for macOS only. The name went from wren to uparupa and then, on 2026-11-26, to upaa. Working directory names and similar may still contain wren.
+This document separates what was decided in conversation before implementation, what was confirmed from primary sources, and what has not been confirmed.
+There is no code yet.
 
-## 1. 決定事項
+## 1. Decisions
 
-ユーザーが決めたこと。変える場合はユーザーに確認する。
+What the user decided. Confirm with the user before changing any of these.
 
-| 項目 | 決定 |
+| Item | Decision |
 |---|---|
-| 名前 | upaa（wren、uparupa を経て 2026-11-26 に変更） |
-| 目的 | 普段使いできるターミナルにする（学習用の最小実装で終わらせない） |
-| 対象 OS | macOS のみ |
-| 言語の構成 | Swift と Zig の混成。UI・IME・Metal の呼び出しは Swift、それ以外の中核は Zig |
-| 描画 | Metal を使う。グリフの生成は CoreText |
-| 端末エミュレーションの中身 | libghostty-vt（安定版の C ABI）を使う |
-| Zig のバージョン | 0.17.x |
-| 実装の担当 | 本格的な実装は Claude Code で行う |
-| 対応する macOS | 13 以上（2026-11-25 決定） |
-| アーキテクチャ | Apple Silicon（arm64）のみ（2026-11-25 決定） |
-| プロジェクトの形 | SwiftPM と、`.app` を組み立てるシェルスクリプト 1 本（2026-11-25 決定） |
-| XCFramework の置き方 | リポジトリに含めず、取得スクリプトで取って署名と SHA-256 を確かめる（2026-11-25 決定） |
+| Name | upaa (wren, then uparupa; changed to upaa on 2026-11-26) |
+| Purpose | A terminal usable for daily work (do not stop at a minimal learning implementation) |
+| Target OS | macOS only |
+| Language mix | Swift and Zig. UI, IME, and Metal calls in Swift; the rest of the core in Zig |
+| Drawing | Use Metal. Glyph generation uses CoreText |
+| Terminal emulation core | Use libghostty-vt (stable C ABI) |
+| Zig version | 0.17.x |
+| Implementation | Full implementation is done by Claude Code |
+| Supported macOS | 13 or later (decided 2026-11-25) |
+| Architecture | Apple Silicon (arm64) only (decided 2026-11-25) |
+| Project form | SwiftPM, plus one shell script that assembles the `.app` (decided 2026-11-25) |
+| Where the XCFramework lives | Not included in the repository. Fetched by a script that checks its signature and SHA-256 (decided 2026-11-25) |
 
-Zig を選んだ理由は「Zig で書きたい」というユーザーの希望。合理性だけなら C のほうがビルドの手間が少ないことは、ユーザーに伝えたうえでの決定である。
+Zig was chosen because the user wants to write in Zig. The user was told that, on rationality alone, C needs less build effort, and the decision was made with that understood.
 
-条件が 1 つ付いている。この混成は「性能や合理性が著しく落ちない」ことが前提で、無理だと分かった場合は無理だとはっきり伝える約束になっている。M0（5 章）がその見極めの場になる。
+There is one condition. The mix assumes that "performance and rationality do not drop significantly." If it turns out not to work, the agreement is to say so clearly. M0 (section 5) is the checkpoint for this.
 
-検討して採らなかった案。
+Options considered and not adopted:
 
-- クロスプラットフォーム GUI: 当初の希望だったが、macOS 専用でよいとなり取り下げ。
-- Electrobun + webview: 描画・フォント・IME を WebKit に任せられるが、描画性能と入力遅延の上限が低くなる見込みのため見送り。
-- フル libghostty（描画とフォントまで含むもの。GhosttyKit など）: API が未安定で、自作の意味も薄くなるため見送り。
-- 全部 Swift: いちばん単純だが、Zig で書きたいという希望に合わない。
-- 中核を C: ビルドの手間は最小。M0 が通らなかった場合の切り替え先として残す。
-- UI や Metal の呼び出しまで Zig: Ghostty はやっているが、専用のライブラリと包む層を自前で持っている。個人プロジェクトでは手間に見合わないと判断。
+- Cross-platform GUI: the initial wish, withdrawn when macOS-only was accepted.
+- Electrobun + webview: could leave drawing, fonts, and IME to WebKit, but the expected ceiling on drawing performance and input latency is low, so it was dropped.
+- Full libghostty (including drawing and fonts, such as GhosttyKit): the API is not stable, and writing our own would then make little sense, so it was dropped.
+- All Swift: the simplest, but it does not match the wish to write in Zig.
+- Core in C: the least build effort. Kept as the fallback if M0 fails.
+- Zig also for UI and Metal calls: Ghostty does this, but it maintains a dedicated library and a wrapper layer of its own. Judged not worth the effort for a personal project.
 
-## 2. 確認済みの事実
+## 2. Confirmed facts
 
-2026-11-25 時点。出典を併記する。リポジトリの記述は `ghostty-org/ghostty` のタグ `vt-1.0.2` を読んで確認した。
+As of 2026-11-25. Sources are noted.
 
-### libghostty-vt のバージョンと安定性
+### libghostty-vt version and stability
 
-- libghostty-vt 1.0.0 は 2026-11-06 公開。この版から C ABI が安定。1.0.1 は 11-11、1.0.2 は 11-24 公開で、どちらも性能改善が中心。（リリースノート）
-- libghostty-vt は Ghostty アプリとは別のバージョン番号を持ち、タグは `vt-X.Y.Z`。（`PACKAGING-LIBGHOSTTY.md`）
-- セマンティックバージョニングで ABI 互換を保証し、CI で検査している。（作者の 1.0 記事）
-- 描画・ウィンドウ・PTY は含まれない。利用側が用意する。（Ghostling の README）
+- libghostty-vt 1.0.0 was released 2026-11-06. From this version the C ABI is stable. 1.0.1 came on 11-11 and 1.0.2 on 11-24; both are mainly performance improvements. (release notes)
+- libghostty-vt has its own version numbers, separate from the Ghostty app. Tags are `vt-X.Y.Z`. (`PACKAGING-LIBGHOSTTY.md`)
+- ABI compatibility is guaranteed by semantic versioning and checked in CI. (the author's 1.0 article)
+- Drawing, windowing, and PTY are not included. The user of the library must provide them. (Ghostling README)
 
-### libghostty-vt の入手方法
+### How to obtain libghostty-vt
 
-- ビルド済みの XCFramework が配布されている。場所は次の形式。（`PACKAGING-LIBGHOSTTY.md`）
+- A prebuilt XCFramework is distributed. The location has the following form. (`PACKAGING-LIBGHOSTTY.md`)
 
   ```
   https://release.files.ghostty.org/libghostty-vt/VERSION/ghostty-vt-VERSION.xcframework.zip
   ```
 
-  各ファイルに `.minisig` の署名があり、同じ場所に `SHA256SUMS` と `SHA256SUMS.minisig` がある。minisign の公開鍵は次のとおり。
+  Each file has a `.minisig` signature. `SHA256SUMS` and `SHA256SUMS.minisig` are in the same location. The minisign public key is:
 
   ```
   RWQlAjJC23149WL2sEpT/l0QKy7hMIFhYdQOFy0Z7z7PbneUgvlsnYcV
   ```
 
-- 公式に Swift 用の例 `example/swift-vt-xcframework` がある。`Package.swift` は swift-tools-version 5.9、`platforms: [.macOS(.v13)]`、XCFramework を `binaryTarget`（名前は `GhosttyVt`）として参照し、ソースでは `import GhosttyVt` と書いている。
-- ソースからビルドする場合、1.0.x は Zig 0.17.x が必要（0.16 と 0.18 は不可）。`build.zig.zon` の `minimum_zig_version` は `0.17.0`。
-- Git チェックアウトからビルドする場合は `-Demit-lib-vt` が必要。付けないと Ghostty アプリ本体がビルドされる。XCFramework も作るなら `-Demit-xcframework=true` を足す。
+- There is an official Swift example, `example/swift-vt-xcframework`. Its `Package.swift` uses swift-tools-version 5.9 and `platforms: [.macOS(.v13)]`. It references the XCFramework as a `binaryTarget` (named `GhosttyVt`), and the source uses `import GhosttyVt`.
+- To build from source, 1.0.x requires Zig 0.17.x (0.16 and 0.18 do not work). `minimum_zig_version` in `build.zig.zon` is `0.17.0`.
+- Building from a Git checkout requires `-Demit-lib-vt`. Without it, the Ghostty app itself gets built. To also build the XCFramework, add `-Demit-xcframework=true`.
 
 ### Zig 0.17.0
 
-出典は公式のリリースノート。
+Sources are the official release notes.
 
-- 最新の安定版は 0.17.0。リリースノートに日付の記載はなく、別の記事では 2026 年 10 月の公開とされている。0.17.1 は検索した範囲では見つからなかったが、M0 の時点（2026-11-25）で Homebrew に 0.17.1 があり、手元はそれを使っている。
-- `@cImport` は削除された。C のヘッダは、translate-c パッケージを `build.zig` の依存に加えて取り込む。リリースノートの移行手順は `zig fetch --save git+https://codeberg.org/ziglang/translate-c#zig-0.17.x` から始まる。
-- ただし M0 で試したところ、0.17.1 の標準の `std.Build.addTranslateC` は残っていて、外部パッケージを取得せずに Apple のヘッダ（CoreFoundation、CoreGraphics、CoreText）と `<ghostty/vt.h>` を取り込めた。
-- ビルドシステムが作り直され、`build.zig` の API が変わった（`b.build_root` → `b.root` など）。0.16 向けの記事やサンプルはそのままでは動かない。
-- `@bitCast` の意味が変わった。配列やベクタでは、コンパイルエラーにならずに結果が変わる場合があるとリリースノートが警告している。
-- 言語サーバー（ZLS）は 0.17.0 では完全には動かない。一部の機能は復旧済みで、対応は進行中。
-- `aarch64-macos` は Tier 2。`x86_64-macos` は廃止予定の扱い。
-- 1.0 の時期は示されていない。0.17.0 は 5 か月分の開発をまとめた版。
+- The latest stable release is 0.17.0. The release notes give no date; another article says it was published in October 2026. 0.17.1 was not found in the range searched. However, at M0 (2026-11-25) Homebrew had 0.17.1, and the local setup uses it.
+- `@cImport` was removed. C headers are now imported by adding the translate-c package as a dependency in `build.zig`. The migration steps in the release notes start with `zig fetch --save git+https://codeberg.org/ziglang/translate-c#zig-0.17.x`.
+- However, in M0 testing, the standard library's `std.Build.addTranslateC` still exists in 0.17.1. Apple headers (CoreFoundation, CoreGraphics, CoreText) and `<ghostty/vt.h>` could be imported without fetching an external package.
+- The build system was rewritten and the `build.zig` API changed (`b.build_root` → `b.root`, etc.). Articles and samples written for 0.16 do not work as they are.
+- The meaning of `@bitCast` changed. The release notes warn that for arrays and vectors the result may change without a compile error.
+- The language server (ZLS) does not fully work with 0.17.0. Some features are restored; support is in progress.
+- `aarch64-macos` is Tier 2. `x86_64-macos` is treated as deprecated.
+- No timeline for 1.0 is given. 0.17.0 is a release that bundles five months of development.
 
-### M0 で確認したこと（2026-11-25）
+### Confirmed in M0 (2026-11-25)
 
-- Swift と Zig のつなぎ方: Zig が静的ライブラリ `zig-out/lib/libupaacore.a` を作り（compiler_rt を同梱）、SwiftPM の C ターゲット `CUpaaCore`（手書きの C ヘッダ `include/upaa_core.h` と空の `shim.c`）の `linkedLibrary("upaacore")` でリンクする。検索パスは `Package.swift` から `-L zig-out/lib` で渡す。Zig のコードだけを変えたときも、C ヘッダだけを変えたときも、`scripts/build-app.sh` で反映されることを確認した。最初は `systemLibrary` ターゲットにしたが、ヘッダを変えても debug ビルドで Swift が再コンパイルされなかったのでやめた。
-- libghostty-vt: Zig は `<ghostty/vt.h>` を translate-c で取り込んで C API を呼ぶだけで、ライブラリ本体は Swift 側の最終リンクで `binaryTarget`（XCFramework）から入れる。Zig のテストの実行ファイルは、XCFramework の中の `libghostty-vt.a`（arm64 と x86_64 のファット）を `addObjectFile` で直接指してリンクできた。upaa の静的ライブラリと libghostty-vt の両方に compiler_rt が入っているが、リンクでシンボルの重複エラーは出ていない。
-- Zig から libghostty-vt で 80x24 の端末を作って VT のバイト列を書き、formatter でプレーンテキストに戻せた（`Hello, \x1b[1;32mworld\x1b[0m!\r\nあいう` → `Hello, world!\nあいう`）。
-- ターゲットを `aarch64-macos.13.0` と明示すると Zig は SDK を自動で探さず、フレームワークが見つからない。`build.zig` で `xcrun --sdk macosx --show-sdk-path` の結果を検索パスに渡せば足りた。Ghostty の `apple_sdk` に当たる仕組みは今のところ要らない。
-- Zig から CoreText を呼び、Menlo の 'A'（glyph 36）と、フォールバックで HiraginoSans-W3 の「あ」（glyph 843）を取れた。macOS 27.2.1 で、`.app` 内の実行ファイルを直接起動して確認した。
-- `swift build` は内部で `sandbox-exec` を使うため、Claude Code のサンドボックスの中では動かない。サンドボックスの外で実行している。
-- 未解明: 最終的な実行ファイルの `LC_BUILD_VERSION` が `minos 13.0 / sdk 13.0` になる。Zig で直接リンクしたものは `sdk 27.0` だった。AppKit はリンク時の SDK のバージョンで振る舞いを変えるので、M1 の前に調べる。
+- How Swift and Zig connect: Zig builds the static library `zig-out/lib/libupaacore.a` (with compiler_rt included). The SwiftPM C target `CUpaaCore` (a hand-written C header `include/upaa_core.h` and an empty `shim.c`) links it with `linkedLibrary("upaacore")`. The search path is passed from `Package.swift` as `-L zig-out/lib`. Confirmed that both changes to only the Zig code and changes to only the C header are reflected by `scripts/build-app.sh`. First tried a `systemLibrary` target, but when the header changed, Swift was not recompiled in the debug build, so it was dropped.
+- libghostty-vt: Zig imports `<ghostty/vt.h>` with translate-c and only calls the C API. The library itself comes in at the final Swift link, via `binaryTarget` (XCFramework). For the Zig test executable, pointing `addObjectFile` directly at `libghostty-vt.a` inside the XCFramework (a fat arm64 and x86_64 binary) linked successfully. Both the upaa static library and libghostty-vt contain compiler_rt, but no duplicate-symbol link errors occurred.
+- From Zig, an 80x24 terminal was created with libghostty-vt, VT bytes were written, and the content was read back as plain text with the formatter (`Hello, \x1b[1;32mworld\x1b[0m!\r\nあいう` → `Hello, world!\nあいう`).
+- When the target is specified as `aarch64-macos.13.0`, Zig does not search for the SDK automatically, and frameworks are not found. Passing the result of `xcrun --sdk macosx --show-sdk-path` as a search path in `build.zig` was enough. A mechanism equivalent to Ghostty's `apple_sdk` is not needed for now.
+- From Zig, CoreText was called and Menlo's 'A' (glyph 36) was obtained. Through fallback, HiraginoSans-W3's U+3042 (hiragana a) was obtained (glyph 843). Checked on macOS 27.2.1 by directly launching the executable inside `.app`.
+- `swift build` internally uses `sandbox-exec`, so it does not run inside the Claude Code sandbox. It was run outside the sandbox.
+- Not yet understood: the `LC_BUILD_VERSION` of the final executable becomes `minos 13.0 / sdk 13.0`. An executable linked directly by Zig had `sdk 27.0`. AppKit changes its behavior based on the SDK version at link time, so this must be checked before M1.
 
-### M1 の計測（2026-11-26）
+### M1 measurements (2026-11-26)
 
-Apple M4 Max、内蔵ディスプレイ（3024 x 1964）、macOS 27.2.1。80 桁 x 24 行のウィンドウで、実際に描画しながら測った。測り方は `upaa --bench-cat <ファイル>` と `upaa --bench-keys`（`Sources/UpaaKit/App/Automation.swift`）。
+Apple M4 Max, built-in display (3024 x 1964), macOS 27.2.1. Measured in an 80-column x 24-row window while actually drawing. Method: `upaa --bench-cat <file>` and `upaa --bench-keys` (`Sources/UpaaKit/App/Automation.swift`).
 
-| 項目 | 結果 |
+| Item | Result |
 |---|---|
-| 50 MB のテキスト（1 行 100 文字の base64）を `cat` | 0.45〜0.67 秒（75〜110 MB/秒）。3 回測って 1 回目が遅い |
-| その間に描いたフレーム | 56〜80 枚 |
-| 1 フレームの組み立て（CPU 側。Zig がセルを書き、Swift が描画命令を出すまで） | release で平均 0.13〜0.16 ミリ秒、debug で 0.31〜0.33 ミリ秒 |
-| キーを受け取ってから、その文字を描いたフレームが画面に出るまで | 中央値 23〜28 ミリ秒、最大 31〜36 ミリ秒（60 回 x 2） |
+| `cat` of 50 MB of text (base64, 100 characters per line) | 0.45–0.67 s (75–110 MB/s). Measured 3 times; the first was slower |
+| Frames drawn during that time | 56–80 |
+| Frame assembly (CPU side: from Zig writing cells until Swift issues the draw commands) | release average 0.13–0.16 ms; debug average 0.31–0.33 ms |
+| From key press until a frame showing that character appears on screen | median 23–28 ms; maximum 31–36 ms (60 times x 2) |
 
-- `cat` の時間は release と debug でほぼ同じだった。upaa のコードではなく、libghostty-vt の解釈か PTY の受け渡しで決まっていると見ている（切り分けはしていない）。
-- 毎フレーム全セルを書き直す作りのままで、1 フレームの組み立ては 1 ミリ秒に届かない。変更行だけを書く差分描画は、今は要らない。
-- キーから表示までの時間には、シェルが文字をエコーするまでの時間と、画面の更新を待つ時間が入っている。キーボードそのものの遅れと、ディスプレイの応答は入っていない。値が 8 ミリ秒前後の刻みで並ぶので、画面の更新 3 回分ほど待っていると見ている（推測）。短くするなら、`MTKView` の「次の更新で描く」をやめてすぐ描く形にするのが候補。
-- Terminal.app など、ほかのターミナルとの比較はしていない。
+- The `cat` time was almost the same in release and debug. It is not caused by upaa's code; it is judged to be determined by libghostty-vt's parsing or the PTY transfer (not isolated).
+- Every cell is still redrawn every frame. Frame assembly takes under 1 ms, so differential drawing (only changed rows) is not needed now.
+- The key-to-display time includes the time for the shell to echo the character and the time waiting for the screen update. It does not include keyboard latency or display response. The values come in steps of about 8 ms, which is judged (a guess) to be waiting about three screen refreshes. To shorten it, a candidate is to stop using `MTKView`'s "draw at the next update" and draw immediately.
+- No comparison was made with other terminals such as Terminal.app.
 
-### Ghostty 本体の作り
+### How Ghostty itself is built
 
-upaa と同じ「Swift + Zig」の混成で作られている。参考にできる。
+It is built as a Swift and Zig mix, like upaa. It can be used as a reference.
 
-- macOS アプリ側は Swift（`macos/` 配下に約 200 ファイル）、中核は Zig（`src/` 配下に約 620 ファイル）。
-- PTY（`src/pty.zig`、`src/termio/`）、CoreText を使うフォント処理（`src/font/face/coretext.zig`、`src/font/shaper/coretext.zig`）は Zig 側にある。
-- Metal の描画も Zig 側にあり（`src/renderer/Metal.zig`、`src/renderer/metal/`）、Objective-C ランタイム経由で呼んでいる。upaa はここを Swift で書く点が違う。
-- Apple のヘッダを Zig に取り込む仕組みは `pkg/macos/build.zig` にある。translate-c と、Apple SDK のパスを解決する `apple_sdk` を使い、`linkFramework` でフレームワークをリンクしている。
+- The macOS app side is Swift (about 200 files under `macos/`). The core is Zig (about 620 files under `src/`).
+- PTY (`src/pty.zig`, `src/termio/`) and CoreText-based font handling (`src/font/face/coretext.zig`, `src/font/shaper/coretext.zig`) are on the Zig side.
+- Metal drawing is also on the Zig side (`src/renderer/Metal.zig`, `src/renderer/metal/`), called through the Objective-C runtime. upaa differs in writing this part in Swift.
+- The mechanism for importing Apple headers into Zig is in `pkg/macos/build.zig`. It uses translate-c and `apple_sdk`, which resolves the Apple SDK path, and links frameworks with `linkFramework`.
 
-### C API の形
+### C API shape
 
-ヘッダは `<ghostty/vt.h>` だけを include すればよい。以下は `include/ghostty/vt/` と `example/c-vt-*` で確認した関数名。
+Including `<ghostty/vt.h>` alone is enough. The function names below were confirmed in `include/ghostty/vt/` and `example/c-vt-*`.
 
-- 端末: `ghostty_terminal_new(allocator, &terminal, cols, rows)`、`ghostty_terminal_vt_write`、`ghostty_terminal_resize`、`ghostty_terminal_scroll_viewport`、`ghostty_terminal_get` / `ghostty_terminal_set`、`ghostty_terminal_free`。
-- 端末からの通知: `ghostty_terminal_set` にコールバックを渡す。`GHOSTTY_TERMINAL_OPT_WRITE_PTY`（端末が PTY に書き戻したいバイト列）、`_USERDATA`、`_BELL`、`_TITLE_CHANGED`、`_PWD_CHANGED`、`_CLIPBOARD_READ`、`_CLIPBOARD_WRITE` など。例は `example/c-vt-effects`。
-- 描画用の状態: `ghostty_render_state_new` → `ghostty_render_state_update(state, terminal)` → 行イテレータ（`ghostty_render_state_row_iterator_next_dirty` で変更行だけ回せる）→ セルの取得 → `ghostty_render_state_clean`。例は `example/c-vt-render`。
-- 描画用の状態の更新は 2 段階にも分けられる。`ghostty_render_state_begin_update` だけが端末へのアクセスを必要とし、`ghostty_render_state_end_update` は端末が書き換えられている最中でも呼べる。IO スレッドと共有するロックを短く持つための作り。（`render.h` のコメント）
-- キー入力: `ghostty_key_event_*` でイベントを組み立て、`ghostty_key_encoder_encode` でバイト列にする。`ghostty_key_encoder_set_from_terminal` で端末のモードを反映する。IME 変換中かどうかを渡す `ghostty_key_event_set_composing` がある。
-- マウス入力: `ghostty_mouse_event_*` と `ghostty_mouse_encoder_*`。
-- そのほか: 貼り付け（`ghostty_paste_encode`、`ghostty_paste_is_safe`）、フォーカス通知（`ghostty_focus_encode`）、選択（`ghostty_selection_gesture_*`）、検索（`ghostty_search_*`）、整形出力（`ghostty_formatter_*`）、文字幅（`ghostty_unicode_grapheme_width`）、Kitty 画像（`kitty_graphics.h`）。
+- Terminal: `ghostty_terminal_new(allocator, &terminal, cols, rows)`, `ghostty_terminal_vt_write`, `ghostty_terminal_resize`, `ghostty_terminal_scroll_viewport`, `ghostty_terminal_get` / `ghostty_terminal_set`, `ghostty_terminal_free`.
+- Notifications from the terminal: pass callbacks with `ghostty_terminal_set`. These include `GHOSTTY_TERMINAL_OPT_WRITE_PTY` (bytes the terminal wants to write back to the PTY), `_USERDATA`, `_BELL`, `_TITLE_CHANGED`, `_PWD_CHANGED`, `_CLIPBOARD_READ`, and `_CLIPBOARD_WRITE`. Example: `example/c-vt-effects`.
+- Drawing state (render state): `ghostty_render_state_new` → `ghostty_render_state_update(state, terminal)` → row iterator (`ghostty_render_state_row_iterator_next_dirty` lets you iterate only the changed rows) → get cells → `ghostty_render_state_clean`. Example: `example/c-vt-render`.
+- The render state update can also be split into two steps. Only `ghostty_render_state_begin_update` needs access to the terminal; `ghostty_render_state_end_update` can be called even while the terminal is being rewritten. This design keeps the lock shared with the IO thread short. (comment in `render.h`)
+- Key input: build an event with `ghostty_key_event_*`, and convert it to bytes with `ghostty_key_encoder_encode`. `ghostty_key_encoder_set_from_terminal` reflects the terminal's modes. `ghostty_key_event_set_composing` passes whether IME composition is in progress.
+- Mouse input: `ghostty_mouse_event_*` and `ghostty_mouse_encoder_*`.
+- Others: paste (`ghostty_paste_encode`, `ghostty_paste_is_safe`), focus notification (`ghostty_focus_encode`), selection (`ghostty_selection_gesture_*`), search (`ghostty_search_*`), formatted output (`ghostty_formatter_*`), character width (`ghostty_unicode_grapheme_width`), Kitty images (`kitty_graphics.h`).
 
-### Ghostling を参考にするときの注意
+### Notes when referring to Ghostling
 
-- Ghostling は公式の最小実装（C の単一ファイル、Raylib 使用）で、README が「普段使い向けではない」と明記している。文字のシェーピングはしていない。
-- Ghostling が固定している Ghostty のコミットは `f64f4aca`（Ghostling 側の最終コミットは 2026-08-09）で、1.0 より前のもの。
-- Ghostling の `main.c` が呼んでいる関数のうち、次の 5 つは `vt-1.0.2` のヘッダに存在しない。
+- Ghostling is the official minimal implementation (a single C file, using Raylib). Its README states that it is "not intended for daily use." It does not do text shaping.
+- The Ghostty commit that Ghostling pins is `f64f4aca` (Ghostling's last commit is dated 2026-08-09). It predates 1.0.
+- Five of the functions called by Ghostling's `main.c` do not exist in the `vt-1.0.2` header:
 
   ```
   ghostty_key_encoder_setopt_from_terminal
@@ -142,121 +142,118 @@ upaa と同じ「Swift + Zig」の混成で作られている。参考にでき�
   ghostty_mods
   ```
 
-  全体の組み立て方（PTY の読み書き、描画ループ、入力の流れ）は参考になるが、関数名は `vt-1.0.2` のヘッダと `example/c-vt-*` を正とすること。
-- Ghostling の README は Zig 0.16.x を要求している。libghostty-vt 1.0.x の要求（0.17.x）とは違う。
+  The overall structure (PTY reads and writes, drawing loop, input flow) is a useful reference. However, function names must follow the `vt-1.0.2` header and `example/c-vt-*`.
+- Ghostling's README requires Zig 0.16.x. This differs from the requirement of libghostty-vt 1.0.x (0.17.x).
 
-## 3. 確認できていないこと
+## 3. Not yet confirmed
 
-着手前か、該当する作業の中で確かめる。上の 4 つは M0 で確かめる。
+Check these before starting, or during the relevant work.
 
-- （M0 で確認済み。2 章「M0 で確認したこと」）Swift のアプリと Zig の静的ライブラリをつなぐ具体的な手順。SwiftPM も Xcode も Zig を直接ビルドできないので、`zig build` で静的ライブラリと C ヘッダを作ってリンクする形になるはずだが、試していない。
-- （M0 で確認済み。`apple_sdk` 相当は不要だった）自分のプロジェクトで、translate-c を使って Apple のヘッダ（CoreText、CoreGraphics）と `<ghostty/vt.h>` を Zig に取り込めるか。Ghostty は `apple_sdk` という自前の仕組みを使っており、同じことが要るかは未確認。
-- （M0 で確認済み）静的ライブラリ `libghostty-vt.a`。macOS 向けは arm64 と x86_64 のファット（ほかに iOS 向け 2 つ）。各オブジェクトの `minos` は 13.0。モジュール名は `GhosttyVt`（`module.modulemap` の umbrella header は `ghostty/vt.h`）。1.0.2 の zip の SHA-256 は `15477209ce86ad1c944f217e925c84acf796ecc51aba7a935aaa1a7769890bd6` で、minisign の署名も確認した。元の記述: XCFramework の中身。この資料を作った環境からは `release.files.ghostty.org` に接続できず、ダウンロードして確かめられなかった。含まれるアーキテクチャ（arm64 / x86_64）、静的か動的か、モジュール名が本当に `GhosttyVt` か、SHA-256 の値は未確認。
-- （M0 で確認済み。中の `.a` を直接指せばリンクできる）XCFramework 内のライブラリを Zig のビルドからリンクできるか。XCFramework は Xcode と SwiftPM 向けの形式なので、Zig 側は中のライブラリファイルを直接指す必要があるかもしれない。
-- Zig 0.17.0 が対応する macOS の最低バージョン。リリースノートに「Darwin 15.0+」とあるが、macOS のどの版に当たるかを確かめていない。
-- libghostty-vt の Zig API が C ABI と同じ安定保証の対象かどうか。upaa は C API を使うので影響は小さい。
-- スレッド安全性の正確な範囲。第三者の Rust バインディングの文書には「特記がない限りスレッドセーフではない」とある。公式ヘッダの記述を読んで確かめること。
-- `upaa` という名前の重複。調べていない。（前の名前 wren には同名のスクリプト言語があった。）
-- 性能。何も測っていない。この資料の性能に関する記述はすべて見立てである。
+- The items checked in M0 (linking Swift with Zig, translate-c, the XCFramework contents, linking it from Zig) were moved to section 2, "Confirmed in M0".
+- The minimum macOS version supported by Zig 0.17.0. The release notes say "Darwin 15.0+", but it has not been checked which macOS version that corresponds to.
+- Whether libghostty-vt's Zig API is covered by the same stability guarantee as the C ABI. upaa uses the C API, so the impact is small.
+- The exact scope of thread safety. The documentation of a third-party Rust binding says it is "not thread-safe unless noted otherwise." Verify by reading the official header's notes.
+- Name collision for `upaa`. Not checked. (The previous name, wren, had a scripting language with the same name.)
+- Performance beyond the M1 measurements (section 2, "M1 measurements"). In particular, no comparison with other terminals.
 
-## 4. 構成の案
+## 4. Structure proposal
 
-層の分け方（どこを Swift、どこを Zig で書くか）はユーザーと合意済み。細部は見立てなので、実装しながら見直してよい。
+The split of layers (what is written in Swift and what in Zig) has been agreed with the user. The details are estimates and may be revised during implementation.
 
-### 層の分け方
+### Layer split
 
-| 層 | 言語 | 理由 |
+| Layer | Language | Reason |
 |---|---|---|
-| ウィンドウ、メニュー、タブ、設定画面 | Swift | AppKit をそのまま書ける |
-| 日本語 IME（`NSTextInputClient`） | Swift | Objective-C のプロトコル実装が必要 |
-| Metal の初期化と描画命令 | Swift | 1 フレームに数回の呼び出しで、速度に効かない |
-| シェーダ | Metal Shading Language | 選択の余地がない |
-| PTY の生成と読み書きスレッド | Zig | POSIX の API で、UI に依存しない |
-| libghostty-vt の保持、ロック、入力のエンコード | Zig | C API を呼ぶだけ |
-| 描画用データの組み立て | Zig | 全セルをなめる、いちばん重いループ |
-| グリフのキャッシュとアトラス | Zig | 上のループから毎セル参照される。CoreText は C の API なので Zig から呼べる |
+| Window, menus, tabs, settings screen | Swift | AppKit can be written directly |
+| Japanese IME (`NSTextInputClient`) | Swift | Requires implementing an Objective-C protocol |
+| Metal setup and draw commands | Swift | A few calls per frame, so it does not affect speed |
+| Shaders | Metal Shading Language | No other choice |
+| PTY creation and read/write threads | Zig | POSIX API, independent of the UI |
+| Holding libghostty-vt, locking, input encoding | Zig | Only calls the C API |
+| Building drawing data | Zig | Scans every cell; the heaviest loop |
+| Glyph cache and atlas | Zig | Referenced for every cell from the loop above. CoreText is a C API, so it can be called from Zig |
 
 ```
-[Swift] キー入力 / IME ──> [Zig] キーエンコーダ ──> PTY（子プロセス = シェル）
-                                                      │ 出力
+[Swift] key input / IME ──> [Zig] key encoder ──> PTY (child process = shell)
+                                                      │ output
                                                       v
                                         [Zig] ghostty_terminal_vt_write
                                                       │
                                                       v
-                        [Zig] 描画用の状態をなめて、頂点データを Metal のバッファに書く
+                        [Zig] scan the render state and write vertex data into the Metal buffer
                                                       │
                                                       v
-                                        [Swift] Metal の描画命令を発行
+                                        [Swift] issue the Metal draw commands
 ```
 
-### 境界の決まり
+### Boundary rules
 
-- Zig 側は C の関数として公開し（`export fn` と C ヘッダ）、Swift からは C の関数として呼ぶ。
-- 言語をまたぐのは、フレーム単位か、PTY から読んだかたまり単位にする。セル 1 個ごとに Swift へコールバックする設計にはしない。ここを守らないと、混成にした意味がなくなる。
-- Swift 側が Metal のバッファのポインタを渡し、Zig 側がそこへ直接書き込む。コピーを挟まない。
-- Zig 側から Swift 側への通知（タイトル変更、ベル、再描画の要求など）は、頻度の低いものに限ってコールバックで渡す。
+- The Zig side is exposed as C functions (`export fn` and a C header), and Swift calls them as C functions.
+- Crossing between languages happens per frame, or per chunk read from the PTY. Do not design per-cell callbacks to Swift. Keeping this rule matters; otherwise the mix loses its purpose.
+- Swift passes a pointer to the Metal buffer, and Zig writes into it directly. No copy in between.
+- Notifications from Zig to Swift (title change, bell, redraw request) are passed as callbacks, limited to low-frequency ones.
 
-### libghostty-vt の使い方
+### How to use libghostty-vt
 
-- ビルド済みの XCFramework をリンクし、Zig からは C API を呼ぶ。
-- こうする理由は、Zig の版と libghostty-vt の版を切り離すため。libghostty-vt をソースからビルドすると Zig の版が libghostty-vt 側の指定に縛られ、将来 Zig を上げたいときに上げられなくなる。
-- libghostty-vt の Zig API は使わない。同じ版の Zig でソースからビルドする必要があり、安定保証の対象かも未確認のため。
+- Link the prebuilt XCFramework, and call the C API from Zig.
+- The reason is to decouple the Zig version from the libghostty-vt version. If libghostty-vt is built from source, the Zig version is tied to what libghostty-vt specifies, and Zig could not be upgraded later.
+- Do not use libghostty-vt's Zig API. It must be built from source with the same Zig version, and whether it is covered by the stability guarantee is unconfirmed.
 
-### そのほかの見立て
+### Other assessments
 
-- 端末 1 つにつき、PTY、`GhosttyTerminal`、描画用の状態を Zig 側で 1 組持つ。
-- PTY の読み取りは専用スレッドで行い、端末への書き込みと描画用の状態の更新は 1 つのロックで守る。`ghostty_render_state_begin_update` / `end_update` の 2 段階を使えば、ロックを持つ時間を短くできる。
-- 日本語 IME は早い段階で通す。後回しにすると入力まわりの作り直しが大きくなる。
-- `.app` として起動できる形が早めに必要になる見込み。SwiftPM の実行ファイルのままだと、メニューや IME の挙動が通常のアプリと違う可能性がある（未検証）。Xcode プロジェクトにするか、SwiftPM とバンドルを作るスクリプトにするかは未決定。
+- For each terminal, keep one set on the Zig side: a PTY, a `GhosttyTerminal`, and a render state.
+- PTY reads run on a dedicated thread. Writes to the terminal and updates of the render state are guarded by one lock. Using the two-step `ghostty_render_state_begin_update` / `end_update` shortens the time the lock is held.
+- Pass Japanese IME early. If it is postponed, the rework of the input layer becomes large.
+- A form that can launch as an `.app` will be needed early. A bare SwiftPM executable may behave differently from a normal app in menus and IME (not verified). Whether to use an Xcode project or SwiftPM with a script that builds the bundle is undecided.
 
-### Zig を使ううえでの負担
+### Burden of using Zig
 
-ユーザーには伝えてある。実装中に重くなりすぎたら、隠さず報告すること。
+The user has been told. If it becomes too heavy during implementation, report it without hiding it.
 
-- ビルドの仕組み（translate-c、Apple SDK のパス、Swift とのリンク）を自分で組む必要がある。
-- Zig の版が上がるたびに修正が要る可能性が高い。次の版の時期は公表されていない。
-- ZLS が 0.17.0 で完全には動かないので、エディタの補完や定義ジャンプが効きにくい。
+- The build machinery (translate-c, the Apple SDK path, linking with Swift) must be built by hand.
+- Each Zig version upgrade will likely require fixes. The timing of the next version is not announced.
+- ZLS does not fully work with 0.17.0, so editor completion and go-to-definition work poorly.
 
-## 5. マイルストーン
+## 5. Milestones
 
-各段階に「できたと言える条件」を付けた。M2 までは 1 つずつ進めるのがよい。
+Each stage has "criteria for being done" attached. It is best to proceed one at a time up to M2.
 
-| 段階 | 内容 | できたと言える条件 |
+| Stage | Content | Criteria for being done |
 |---|---|---|
-| M0 | 混成の土台を通す | (1) Swift から Zig の関数を呼べる。(2) Zig から libghostty-vt を呼び、端末を作って文字列を書き、プレーンテキストで取り出せる。(3) Zig から CoreText を呼び、1 文字のグリフを取得できる。3 つとも `.app` かそれに準じる形で動く |
-| M1 | ウィンドウ + PTY + Metal 描画 | ウィンドウ内でシェルが動き、`ls` と `vim` が表示でき、ウィンドウのリサイズに追従する |
-| M2 | 日本語の表示と入力 | 全角文字が 2 セル幅で崩れず、IME の変換中の文字列が表示され、確定した文字がシェルに届く |
-| M3 | 普段使いの最低限 | 文字列の選択とコピー、貼り付け、スクロールバック、マウス対応アプリの操作ができる |
-| M4 | 見た目と設定 | フォント・配色・ウィンドウサイズを設定ファイルで変えられる |
-| M5 | 拡張 | タブか分割、検索 UI |
+| M0 | Pass the mixed foundation | (1) Call a Zig function from Swift. (2) Call libghostty-vt from Zig, create a terminal, write a string, and extract it as plain text. (3) Call CoreText from Zig and get the glyph for one character. All three work in `.app` or an equivalent form |
+| M1 | Window + PTY + Metal drawing | A shell runs inside the window; `ls` and `vim` display correctly; the window follows resizing |
+| M2 | Japanese display and input | Full-width characters display at 2-cell width without breaking; IME preedit text is shown; committed characters reach the shell |
+| M3 | Minimum for daily use | Text selection and copy, paste, scrollback, and operation of mouse-aware apps |
+| M4 | Look and settings | Font, color scheme, and window size can be changed in a config file |
+| M5 | Extensions | Tabs or splits, search UI |
 
-M0 について。
+About M0:
 
-- M0 は、Zig を選んだことの見極めを兼ねる。ここが通れば残りは普通の実装になる。
-- M0 のどれかが通らない、または通すための仕組みが大きくなりすぎる場合は、そこで止めてユーザーに報告する。切り替え先の候補は「中核を C で書く」で、層の分け方はそのまま使える。
-- XCFramework の取得は外部からのダウンロードなので、対象の URL と検証方法を示してユーザーの確認を取ってから行う。
+- M0 also serves to check whether choosing Zig was right. If it passes, the rest is ordinary implementation.
+- If any part of M0 fails, or the mechanism needed to pass becomes too large, stop there and report to the user. The candidate fallback is "core in C," and the layer split can be used as is.
+- Downloading the XCFramework is an external download, so show the target URL and verification method, and get the user's confirmation before doing it.
 
-M1 について。
+About M1:
 
-- 大量出力（例: 大きなファイルの `cat`）にかかる時間と、キー入力から表示までの遅れを測っておく。以降の判断を数字でできるようになる。
-- Metal の立ち上げに手間取る場合は、いったん単純な描画でシェルの動作だけ先に確認してもよい。ただし Zig 側が作るデータの形は Metal 向けのままにしておく。
+- Measure the time for large output (for example, `cat` of a large file) and the latency from key press to display. This lets later decisions be made with numbers.
+- If Metal setup takes time, simple drawing may come first, to confirm shell operation alone. However, the shape of the data Zig produces should stay in the form Metal needs.
 
-## 6. ユーザーに確認が必要なこと
+## 6. Items needing user confirmation
 
-「公開するか」以外は 2026-11-25 に決まった（1 章の表）。
+Apart from whether to publish, these were decided on 2026-11-25 (the table in section 1).
 
-- 対応する macOS の最低バージョン（公式の Swift 例は macOS 13 以上）。
-- Apple Silicon だけを対象にしてよいか。Zig 0.17.0 で `x86_64-macos` は廃止予定の扱いになっている。
-- Xcode プロジェクトにするか、SwiftPM 中心にするか。
-- 公開するか、個人用にとどめるか（名前の重複やライセンス表記の扱いが変わる）。
-- XCFramework をリポジトリに含めるか、取得スクリプトにするか。
+- The minimum supported macOS version (the official Swift example uses macOS 13 or later).
+- Whether to target Apple Silicon only. In Zig 0.17.0, `x86_64-macos` is treated as deprecated.
+- Whether to use an Xcode project or be centered on SwiftPM.
+- Whether to publish or keep it for personal use (name collisions and how license notices are handled change).
+- Whether to include the XCFramework in the repository or to use a fetch script.
 
-## 7. 参照先
+## 7. References
 
-- libghostty-vt の文書: https://lib.ghostty.org/vt/
-- libghostty-vt のリリースノート: https://lib.ghostty.org/vt/release-notes.html
-- 作者の 1.0 記事: https://mitchellh.com/writing/libghostty-1-0
-- ソースと例: https://github.com/ghostty-org/ghostty （タグ `vt-1.0.2`、`include/ghostty/vt/`、`example/`、`pkg/macos/`、`PACKAGING-LIBGHOSTTY.md`）
+- libghostty-vt documentation: https://lib.ghostty.org/vt/
+- libghostty-vt release notes: https://lib.ghostty.org/vt/release-notes.html
+- The author's 1.0 article: https://mitchellh.com/writing/libghostty-1-0
+- Source and examples: https://github.com/ghostty-org/ghostty (tag `vt-1.0.2`, `include/ghostty/vt/`, `example/`, `pkg/macos/`, `PACKAGING-LIBGHOSTTY.md`)
 - Ghostling: https://github.com/ghostty-org/ghostling
-- Zig 0.17.0 のリリースノート: https://ziglang.org/download/0.17.0/release-notes.html
-- 関連プロジェクトの一覧: https://github.com/Uzaaft/awesome-libghostty
+- Zig 0.17.0 release notes: https://ziglang.org/download/0.17.0/release-notes.html
+- List of related projects: https://github.com/Uzaaft/awesome-libghostty

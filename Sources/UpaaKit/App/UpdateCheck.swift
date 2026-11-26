@@ -1,18 +1,18 @@
 import CUpaaCore
 import Foundation
 
-/// 新しいバージョンが GitHub の Releases に出ていないかを調べる。知らせるだけで、更新はしない。
+/// Checks whether a newer version is published on GitHub Releases. It only notifies; it does not update.
 ///
-/// GitHub に問い合わせるのは 1 日 1 回まで。それ以外は前回の結果を使う。
-/// 環境変数 UPAA_NO_UPDATE_CHECK を設定すると何もしない。
+/// Queries GitHub at most once a day. Otherwise the previous result is used.
+/// Setting the environment variable UPAA_NO_UPDATE_CHECK makes this do nothing.
 enum UpdateCheck {
     private static let latestReleaseURL = URL(string: "https://api.github.com/repos/Matuyuhi/upaa/releases/latest")!
     private static let interval: TimeInterval = 24 * 60 * 60
     private static let lastCheckedKey = "updateCheck.lastChecked"
     private static let latestTagKey = "updateCheck.latestTag"
 
-    /// 新しいバージョンがあれば、知らせる文を notify に渡す。notify はメインスレッドで呼ばれる。
-    /// 起動時の顔を流している間に終わらなければ、結果は次回の起動で使われる。
+    /// If a newer version is available, passes a message to notify. notify is called on the main thread.
+    /// If this does not finish while the startup face is playing, the result is used on the next launch.
     static func run(notify: @escaping (String) -> Void) {
         guard ProcessInfo.processInfo.environment["UPAA_NO_UPDATE_CHECK"] == nil else { return }
         let defaults = UserDefaults.standard
@@ -33,7 +33,7 @@ enum UpdateCheck {
             defaults.set(Date(), forKey: lastCheckedKey)
             let known = defaults.string(forKey: latestTagKey)
             defaults.set(release.tag_name, forKey: latestTagKey)
-            // 前回の結果ですでに知らせたものは、もう一度出さない。
+            // Do not show again a version that the previous result already announced.
             guard release.tag_name != known, let message = message(for: release.tag_name) else { return }
             DispatchQueue.main.async { notify(message) }
         }.resume()

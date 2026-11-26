@@ -2,23 +2,17 @@ import AppKit
 import CUpaaCore
 import MetalKit
 
-/// 端末 1 つを表示し、キー入力を受け取るビュー。画面が変わったときだけ描き直す。
+/// A view that displays one terminal and receives key input. Redraws only when the screen changes.
 final class TerminalView: MTKView, MTKViewDelegate {
     private let session: TerminalSession
     private let renderer: Renderer
     private let commandQueue: MTLCommandQueue
     private var gridSize: (cols: Int, rows: Int) = (0, 0)
 
-    /// IME で変換中の文字列。画面への表示はまだしていない。
+    /// Text being composed with IME. Passed to Zig when drawing and overlaid with an underline at the cursor position.
     private var markedText = NSMutableAttributedString()
-    /// keyDown の処理中に IME から確定した文字を集める。nil は keyDown の外。
+    /// Collects characters committed from IME during keyDown processing. nil outside keyDown.
     private var insertedText: String?
-
-    /// 計測用。これまでに描いたフレームの数と、CPU 側で 1 フレームを組み立てるのにかかった時間の合計（秒）。
-    private(set) var frameStats: (count: Int, seconds: Double) = (0, 0)
-    /// 計測用。キーを受け取ってから、その次に描いたフレームが画面に出るまでの秒数を受け取る。
-    var onKeyLatency: ((Double) -> Void)?
-    private var pendingKeyTime: TimeInterval?
 
     init(session: TerminalSession, renderer: Renderer) {
         self.session = session
@@ -26,7 +20,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
         commandQueue = renderer.device.makeCommandQueue()!
         super.init(frame: .zero, device: renderer.device)
         colorPixelFormat = Renderer.pixelFormat
-        // 毎フレームではなく、needsDisplay を立てたときだけ描く。
+        // Draw only when needsDisplay is set, not on every frame.
         isPaused = true
         enableSetNeedsDisplay = true
         delegate = self
@@ -35,10 +29,10 @@ final class TerminalView: MTKView, MTKViewDelegate {
 
     @available(*, unavailable)
     required init(coder: NSCoder) {
-        fatalError("init(coder:) は使わない")
+        fatalError("init(coder:) is not used")
     }
 
-    // MARK: 描画
+    // MARK: Drawing
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         let (cols, rows) = renderer.gridSize(for: (Int(size.width), Int(size.height)))
@@ -51,53 +45,39 @@ final class TerminalView: MTKView, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        // 次の変化の通知を受け取れるようにしてから描く。
+        // Register to receive the next change notification before drawing.
         _ = session.takeDirty()
         guard let pass = currentRenderPassDescriptor,
               let drawable = currentDrawable,
               let commandBuffer = commandQueue.makeCommandBuffer()
         else { return }
-        let start = CACurrentMediaTime()
         renderer.draw(
-            session: session, commandBuffer: commandBuffer, pass: pass,
+            session: session, preedit: markedText.string, commandBuffer: commandBuffer, pass: pass,
             viewport: (Int(drawableSize.width), Int(drawableSize.height)))
-        if let keyTime = pendingKeyTime, let onKeyLatency {
-            pendingKeyTime = nil
-            drawable.addPresentedHandler { presented in
-                // 画面に出なかったフレームは presentedTime が 0 になる。
-                guard presented.presentedTime > 0 else { return }
-                let latency = presented.presentedTime - keyTime
-                DispatchQueue.main.async { onKeyLatency(latency) }
-            }
-        }
         commandBuffer.present(drawable)
         commandBuffer.commit()
-        frameStats.count += 1
-        frameStats.seconds += CACurrentMediaTime() - start
     }
 
-    // MARK: キー入力
+    // MARK: Key input
 
     override var acceptsFirstResponder: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        // ⌘ を含むキーはメニューのショートカットに任せる。
+        // Keys that include ⌘ are left to menu shortcuts.
         if event.modifierFlags.contains(.command) {
             super.keyDown(with: event)
             return
         }
 
-        if onKeyLatency != nil { pendingKeyTime = event.timestamp }
-
         let wasComposing = hasMarkedText()
         insertedText = ""
-        // IME を通す。確定した文字は insertText、変換中の文字列は setMarkedText に来る。
+        // Go through IME. Committed characters arrive in insertText; text being composed arrives in setMarkedText.
         interpretKeyEvents([event])
         let text = insertedText ?? ""
         insertedText = nil
 
         if wasComposing || hasMarkedText() {
-            // 変換中のキーは IME のもの。確定した文字だけをシェルへ送る。
+            // Keys during composition belong to IME. Only the committed characters are sent to the shell.
             if !text.isEmpty { session.write(text) }
             return
         }
@@ -110,7 +90,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
             text: Self.printable(text))
     }
 
-    /// 矢印キーや Return などは insertText ではなくここに来る。キーとして送るので何もしない。
+    /// Arrow keys, Return, and similar keys arrive here instead of insertText. They are sent as keys, so nothing is done here.
     override func doCommand(by selector: Selector) {}
 
     private static func mods(_ flags: NSEvent.ModifierFlags) -> UInt8 {
@@ -122,8 +102,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
         return UInt8(mods)
     }
 
-    /// 制御文字（Ctrl+C の 0x03 など）と、矢印キーなどに割り当てられた私用領域の文字は、
-    /// 文字としては送らない。キーと修飾キーからエンコーダが作る。
+    /// Control characters (such as 0x03 for Ctrl+C) and private-use characters assigned to arrow keys are
+    /// not sent as text. The encoder builds them from the key and modifier keys.
     private static func printable(_ text: String) -> String? {
         guard let first = text.unicodeScalars.first else { return nil }
         if first.value < 0x20 || first.value == 0x7F { return nil }
@@ -138,10 +118,11 @@ extension TerminalView: NSTextInputClient {
     func insertText(_ string: Any, replacementRange: NSRange) {
         let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
         markedText = NSMutableAttributedString()
+        needsDisplay = true
         if insertedText != nil {
             insertedText! += text
         } else {
-            // keyDown を通らない入力（文字ビューアなど）。
+            // Input that does not go through keyDown (such as the character viewer).
             session.write(text)
         }
     }
@@ -152,10 +133,12 @@ extension TerminalView: NSTextInputClient {
         } else {
             markedText = NSMutableAttributedString(string: string as? String ?? "")
         }
+        needsDisplay = true
     }
 
     func unmarkText() {
         markedText = NSMutableAttributedString()
+        needsDisplay = true
     }
 
     func hasMarkedText() -> Bool {
@@ -178,7 +161,7 @@ extension TerminalView: NSTextInputClient {
         []
     }
 
-    /// 変換候補のウィンドウを出す位置。カーソルの位置に合わせるのは変換中の表示と一緒に作る。
+    /// Position of the candidate window. Aligning it with the cursor is done together with the in-composition display.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
         guard let window else { return .zero }
         return window.convertToScreen(convert(NSRect(x: 0, y: 0, width: 0, height: 0), to: nil))

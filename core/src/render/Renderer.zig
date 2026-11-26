@@ -1,4 +1,4 @@
-//! フォント、アトラス、描画用の状態をまとめて持ち、端末セッションから 1 フレーム分のセルを作る。
+//! Holds the font, atlas, and render state together, and builds one frame of cells from the terminal session.
 const Renderer = @This();
 
 const std = @import("std");
@@ -41,10 +41,10 @@ pub fn destroy(self: *Renderer) void {
     alloc.destroy(self);
 }
 
-/// session の今の画面を out に書く。
-pub fn buildFrame(self: *Renderer, session: *Session, out: []Cell) Frame.Info {
+/// Writes the session's current screen to out. preedit is the IME composing string (empty if none).
+pub fn buildFrame(self: *Renderer, session: *Session, preedit: []const u8, out: []Cell) Frame.Info {
     if (!session.updateRenderState(self.state)) return .{};
-    const info = self.frame.build(self.state, self.face, &self.atlas, out);
+    const info = self.frame.build(self.state, self.face, &self.atlas, preedit, out);
     _ = vt.ghostty_render_state_clean(self.state);
     return info;
 }

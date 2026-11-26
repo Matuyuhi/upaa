@@ -1,8 +1,8 @@
 #!/bin/sh
-# upaa コマンド。.app の Contents/Resources/bin/upaa に入り、インストーラが PATH の通った場所からリンクする。
-#   upaa            アプリを開く
-#   upaa update     最新のリリースを入れ直す
-#   upaa <引数...>  アプリの実行ファイルに引数を渡す（--version など）
+# upaa command. It lives at Contents/Resources/bin/upaa in the .app, and the installer links it from a location on PATH.
+#   upaa            Open the app
+#   upaa update     Reinstall the latest release
+#   upaa <args...>  Pass arguments to the app executable (such as --version)
 set -eu
 
 SELF="$(realpath "$0")"

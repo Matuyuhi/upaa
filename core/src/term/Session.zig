@@ -1,7 +1,7 @@
-//! 端末 1 つ分。PTY、読み取りスレッド、libghostty-vt の端末をまとめて持つ。
+//! One terminal: bundles the PTY, the read thread, and the libghostty-vt terminal.
 //!
-//! 端末（terminal）に触るのは必ず mutex を取ってから。libghostty-vt の端末はスレッドセーフではなく、
-//! 読み取りスレッド（PTY の出力を書き込む）と呼び出し側のスレッド（リサイズ、描画）の両方から触るため。
+//! Always take the mutex before touching the terminal. The libghostty-vt terminal is not thread-safe,
+//! and it is touched from both the read thread (which writes PTY output) and the caller's thread (resize, drawing).
 const Session = @This();
 
 const std = @import("std");
@@ -19,37 +19,37 @@ key_encoder: vt.GhosttyKeyEncoder,
 key_event: vt.GhosttyKeyEvent,
 mutex: std.c.pthread_mutex_t = .{},
 thread: std.Thread,
-/// 読み取りスレッドを止めるためのパイプ。書くと poll が起きる。
+/// Pipe to stop the read thread. Writing to it wakes poll.
 stop_pipe: [2]c_int,
-/// 画面が変わったことをまだ伝えていないときだけ on_wakeup を呼ぶ。takeDirty が戻す。
+/// Calls on_wakeup only when the screen change has not been reported yet. takeDirty resets it.
 dirty: std.atomic.Value(bool) = .init(false),
 callbacks: Callbacks,
-/// 今の画面の大きさ。起動時の顔を中央に置くのに使う。
+/// Current screen size. Used to center the startup face.
 size: std.atomic.Value(u32),
-/// シェルの出力を読み始める前に、起動時の顔を描くか。
+/// Whether to draw the startup face before reading shell output.
 show_intro: bool,
-/// 起動時の顔の下と、消えたあとの 1 行目に出すお知らせ（更新があることなど）。mutex で守る。
+/// Notice shown below the startup face and on line 1 after it disappears (e.g. an update is available). Guarded by the mutex.
 intro_note: [160]u8 = undefined,
 intro_note_len: usize = 0,
 
 pub const Callbacks = extern struct {
     userdata: ?*anyopaque = null,
-    /// 画面が変わった。読み取りスレッドから呼ばれる。
+    /// The screen changed. Called from the read thread.
     on_wakeup: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
-    /// 子プロセスが終了した。読み取りスレッドから呼ばれる。
+    /// The child process exited. Called from the read thread.
     on_exit: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
 };
 
-/// キーを 1 回押した（離した）こと。Sources/CUpaaCore の UpaaKeyEvent と同じ並び。
+/// One key press (release). Same layout as UpaaKeyEvent in Sources/CUpaaCore.
 pub const KeyEvent = extern struct {
-    /// macOS の仮想キーコード。
+    /// macOS virtual key code.
     key_code: u16,
     action: Action,
-    /// Mods の値を足し合わせたもの。
+    /// The sum of the Mods values.
     mods: u8 = 0,
-    /// 修飾キーなしで同じキーを押したときの文字。分からなければ 0。
+    /// Character for the same key pressed without modifiers. 0 if unknown.
     unshifted_codepoint: u32 = 0,
-    /// このキーで入力される文字（UTF-8）。無ければ null。
+    /// Text this key produces (UTF-8). null if none.
     text: ?[*]const u8 = null,
     text_len: usize = 0,
 
@@ -65,9 +65,9 @@ pub const KeyEvent = extern struct {
 
 pub const Options = struct {
     size: Pty.Size,
-    /// null ならログインシェル。
+    /// null means the login shell.
     command: ?[*:0]const u8 = null,
-    /// シェルの出力を読み始める前に、起動時の顔を描く。
+    /// Draws the startup face before reading shell output.
     intro: bool = false,
     callbacks: Callbacks = .{},
 };
@@ -125,12 +125,12 @@ pub fn destroy(self: *Session) void {
     alloc.destroy(self);
 }
 
-/// 子プロセスへの入力（キー入力をエンコードしたバイト列など）。
+/// Input to the child process (e.g. bytes encoding a key press).
 pub fn write(self: *Session, bytes: []const u8) void {
     _ = self.pty.writeAll(bytes);
 }
 
-/// キー入力を、端末の今のモード（カーソルキーのモードなど）に合わせたバイト列にして子プロセスへ送る。
+/// Turns a key press into bytes matching the terminal's current mode (e.g. cursor key mode), and sends them to the child process.
 pub fn key(self: *Session, event: KeyEvent) void {
     var buf: [128]u8 = undefined;
     var len: usize = 0;
@@ -139,7 +139,7 @@ pub fn key(self: *Session, event: KeyEvent) void {
         defer self.unlock();
 
         const text_len = if (event.text == null) 0 else event.text_len;
-        // 文字になったキーでは、Shift と Option はその文字を作るのに使われている。
+        // For keys that produce a character, Shift and Option are already used to make that character.
         const consumed: u8 = if (text_len > 0) event.mods & (KeyEvent.Mods.shift | KeyEvent.Mods.alt) else 0;
 
         const ev = self.key_event;
@@ -165,7 +165,7 @@ pub fn resize(self: *Session, size: Pty.Size, cell_width_px: u32, cell_height_px
     self.size.store(packSize(size), .release);
 }
 
-/// 起動時の顔と一緒に出すお知らせを決める。顔を流し終えたあとに呼んでも何も起きない。
+/// Decides the notice shown with the startup face. Calling this after the face has finished playing does nothing.
 pub fn setIntroNote(self: *Session, text: []const u8) void {
     self.lock();
     defer self.unlock();
@@ -182,12 +182,12 @@ fn copyIntroNote(self: *Session, out: []u8) []const u8 {
     return out[0..n];
 }
 
-/// 前回の呼び出しから画面が変わっていれば true。次の on_wakeup を受け取れる状態に戻す。
+/// True if the screen changed since the previous call. Resets so that the next on_wakeup is received.
 pub fn takeDirty(self: *Session) bool {
     return self.dirty.swap(false, .acq_rel);
 }
 
-/// 描画用の状態を今の画面に合わせる。端末に触るあいだだけロックを持つ。
+/// Syncs the render state with the current screen. Holds the lock only while touching the terminal.
 pub fn updateRenderState(self: *Session, state: vt.GhosttyRenderState) bool {
     {
         self.lock();
@@ -197,7 +197,7 @@ pub fn updateRenderState(self: *Session, state: vt.GhosttyRenderState) bool {
     return vt.ghostty_render_state_end_update(state) == vt.GHOSTTY_SUCCESS;
 }
 
-/// 画面をプレーンテキストにして out に書く。戻り値は本来の長さ。
+/// Writes the screen as plain text to out. Returns the full length.
 pub fn plainText(self: *Session, out: []u8) ?usize {
     self.lock();
     defer self.unlock();
@@ -228,7 +228,7 @@ fn packSize(size: Pty.Size) u32 {
     return @as(u32, size.cols) << 16 | size.rows;
 }
 
-/// 端末に直接書き込み、画面が変わったことを伝える。
+/// Writes directly to the terminal and signals that the screen changed.
 fn feed(self: *Session, bytes: []const u8) void {
     self.lock();
     vt.ghostty_terminal_vt_write(self.terminal, bytes.ptr, bytes.len);
@@ -239,8 +239,8 @@ fn feed(self: *Session, bytes: []const u8) void {
     }
 }
 
-/// 起動時の顔を 1 コマずつ描く。その間のシェルの出力は PTY に溜まっていて、終わってから読む。
-/// 途中で止めるよう言われたら false。
+/// Draws the startup face one frame at a time. Shell output in the meantime accumulates in the PTY and is read after it finishes.
+/// Returns false if told to stop partway through.
 fn playIntro(self: *Session) bool {
     var buf: [1024]u8 = undefined;
     var note_buf: [160]u8 = undefined;
@@ -272,7 +272,7 @@ fn readLoop(self: *Session) void {
 
         const n = c.read(self.pty.master, &buf, buf.len);
         if (n < 0 and std.c._errno().* == c.EINTR) continue;
-        // 子が終了すると 0 か EIO が返る。
+        // When the child exits, read returns 0 or EIO.
         if (n <= 0) break;
 
         self.feed(buf[0..@intCast(n)]);
@@ -280,8 +280,8 @@ fn readLoop(self: *Session) void {
     if (self.callbacks.on_exit) |f| f(self.callbacks.userdata);
 }
 
-/// 端末がプログラムに返信したいバイト列（カーソル位置の問い合わせへの答えなど）。
-/// ghostty_terminal_vt_write の中から呼ばれるので、mutex は取得済み。
+/// Bytes the terminal wants to send back to the program (e.g. replies to cursor position queries).
+/// Called from inside ghostty_terminal_vt_write, so the mutex is already held.
 fn onWritePty(_: vt.GhosttyTerminal, userdata: ?*anyopaque, data: [*c]const u8, len: usize) callconv(.c) void {
     const self: *Session = @ptrCast(@alignCast(userdata orelse return));
     _ = self.pty.writeAll(data[0..len]);
@@ -301,7 +301,7 @@ test "shell output reaches the terminal" {
     const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "/bin/sh" });
     defer self.destroy();
 
-    // 入力のエコーと区別できるよう、シェルに計算させた結果を待つ。
+    // Wait for the shell to compute the result so it can be told apart from input echo.
     self.write("echo upaa-$((40+2))\n");
     var out: [4096]u8 = undefined;
     try self.waitForText("upaa-42", &out);
@@ -327,7 +327,7 @@ test "keys are encoded for the child" {
     defer self.destroy();
     var out: [4096]u8 = undefined;
 
-    // Ctrl+C（キーコード 8 は C）で sleep が止まり、次のコマンドが実行される。
+    // Ctrl+C (keycode 8 is C) stops sleep, and the next command runs.
     self.typeText("sleep 100");
     self.key(.{ .key_code = 36, .action = .press });
     _ = c.usleep(200 * 1000);
@@ -344,7 +344,7 @@ test "intro is drawn before the shell output" {
 
     try self.waitForText("upaa", &out);
     try std.testing.expect(std.mem.indexOf(u8, &out, "after-intro") == null);
-    // 顔が消えてから、溜まっていたシェルの出力が出る。
+    // After the face disappears, the shell output that accumulated meanwhile is printed.
     try self.waitForText("after-intro", &out);
     const n = self.plainText(&out).?;
     try std.testing.expect(std.mem.indexOf(u8, out[0..n], "upaa") == null);

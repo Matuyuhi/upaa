@@ -1,4 +1,4 @@
-/// 設定ファイルができるまでの固定値。
+/// Fixed values used until the config file is created.
 enum Defaults {
     static let fontName = "Menlo"
     static let fontSize = 13.0

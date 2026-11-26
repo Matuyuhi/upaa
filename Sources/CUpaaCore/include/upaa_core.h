@@ -1,4 +1,4 @@
-// Zig 側（core/src/root.zig）が export する関数。形を変えたら UPAA_CORE_ABI_VERSION と Zig 側の upaa_core_abi_version を一緒に上げる。
+// Functions exported by the Zig side (core/src/root.zig). Change both files together.
 #ifndef UPAA_CORE_H
 #define UPAA_CORE_H
 
@@ -6,47 +6,40 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define UPAA_CORE_ABI_VERSION 8
-
-uint32_t upaa_core_abi_version(void);
-
-// upaa 自身のバージョン（"0.1.0" の形）。値は build.zig.zon の .version から来る。
+// upaa's own version (form "0.1.0"). The value comes from .version in build.zig.zon.
 const char *upaa_version(void);
-// candidate（"v0.2.0" や "0.2.0" の形）が今のバージョンより新しければ true。読めない形なら false。
+// true if candidate (form "v0.2.0" or "0.2.0") is newer than the current version. false if it cannot be parsed.
 bool upaa_version_is_newer(const char *candidate);
 
-// 端末セッション（PTY、シェル、libghostty-vt の端末をまとめたもの）
+// Terminal session (bundles the PTY, the shell, and the libghostty-vt terminal)
 
 typedef struct UpaaSession UpaaSession;
 
-// どちらも Zig の読み取りスレッドから呼ばれる。
+// Both are called from the Zig read thread.
 typedef struct {
     void *userdata;
-    // 画面が変わった。upaa_session_take_dirty を呼ぶまで次は来ない。
+    // The screen changed. The next call does not come until upaa_session_take_dirty is called.
     void (*on_wakeup)(void *userdata);
-    // 子プロセスが終了した。
+    // The child process exited.
     void (*on_exit)(void *userdata);
 } UpaaSessionCallbacks;
 
-// command が NULL ならログインシェルを、そうでなければ /bin/sh -c command を起動する。失敗したら NULL。
-// show_intro が true なら、シェルの出力を出す前に、起動時の顔（文字で組んだウーパールーパー）を画面に描く。
+// If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. Returns NULL on failure.
+// If show_intro is true, draws the startup face (an axolotl made of text characters) on screen before the shell's output.
 UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, bool show_intro, const UpaaSessionCallbacks *callbacks);
-// 起動時の顔の index 番目のコマ（エスケープシーケンス）を out に書き、長さを返す。見た目の確認用。
-size_t upaa_intro_frame(uint16_t cols, uint16_t rows, size_t index, uint8_t *out, size_t cap);
-size_t upaa_intro_frame_count(void);
 void upaa_session_free(UpaaSession *session);
 void upaa_session_write(UpaaSession *session, const uint8_t *data, size_t len);
-// キーを 1 回押した（離した）こと。
+// A key was pressed once (and released).
 typedef struct {
-    // macOS の仮想キーコード（NSEvent.keyCode）。
+    // macOS virtual key code (NSEvent.keyCode).
     uint16_t key_code;
     // UPAA_KEY_RELEASE / PRESS / REPEAT
     uint8_t action;
-    // UPAA_MOD_* を足し合わせたもの。
+    // UPAA_MOD_* values added together.
     uint8_t mods;
-    // 修飾キーなしで同じキーを押したときの文字。分からなければ 0。
+    // The character produced by the same key without modifiers. 0 if unknown.
     uint32_t unshifted_codepoint;
-    // このキーで入力される文字（UTF-8）。無ければ NULL。
+    // Characters this key inputs (UTF-8). NULL if none.
     const uint8_t *text;
     size_t text_len;
 } UpaaKeyEvent;
@@ -54,16 +47,16 @@ typedef struct {
 enum { UPAA_KEY_RELEASE = 0, UPAA_KEY_PRESS = 1, UPAA_KEY_REPEAT = 2 };
 enum { UPAA_MOD_SHIFT = 1 << 0, UPAA_MOD_CTRL = 1 << 1, UPAA_MOD_ALT = 1 << 2, UPAA_MOD_SUPER = 1 << 3 };
 
-// キー入力を、端末の今のモードに合わせたバイト列にしてシェルへ送る。
+// Converts key input into a byte sequence matching the terminal's current mode and sends it to the shell.
 void upaa_session_key(UpaaSession *session, const UpaaKeyEvent *event);
 void upaa_session_resize(UpaaSession *session, uint16_t cols, uint16_t rows, uint32_t cell_width_px, uint32_t cell_height_px);
-// 起動時の顔の下と、顔が消えたあとの 1 行目に出すお知らせ。顔を流し終えたあとに呼んでも何も起きない。
+// Notice shown under the startup face and on line 1 after the face disappears. Calling it after the face has finished playing does nothing.
 void upaa_session_set_intro_note(UpaaSession *session, const char *text);
 bool upaa_session_take_dirty(UpaaSession *session);
-// 画面のプレーンテキスト。戻り値は本来の長さで、cap より長い分は切り捨てる。失敗したら -1。
+// Plain text of the screen. The return value is the original length; anything beyond cap is truncated. -1 on failure.
 ptrdiff_t upaa_session_plain_text(UpaaSession *session, uint8_t *out, size_t cap);
 
-// 描画（フォント、グリフのアトラス、セルのデータの組み立て）
+// Drawing (font, glyph atlas, cell data assembly)
 
 typedef struct UpaaRenderer UpaaRenderer;
 
@@ -71,58 +64,55 @@ typedef struct {
     uint32_t cell_width;
     uint32_t cell_height;
     uint32_t baseline;
+    // From the top edge of the cell to the top edge of the underline, and the underline thickness.
+    uint32_t underline_offset;
+    uint32_t underline_thickness;
 } UpaaMetrics;
 
-// Metal に渡す 1 セル分のデータ。Shaders/terminal.metal の Cell と同じ並び（24 バイト）。
+// Data for one cell passed to Metal. Same layout as Cell in Shaders/terminal.metal (28 bytes).
 typedef struct {
     uint16_t col;
     uint16_t row;
-    // アトラス内のグリフの位置と大きさ。大きさ 0 は描くものが無い。
+    // Position and size of the glyph in the atlas. Size 0 means there is nothing to draw.
     uint16_t glyph_x;
     uint16_t glyph_y;
     uint16_t glyph_width;
     uint16_t glyph_height;
-    // セルの左上から、グリフの画像の左上まで。
+    // From the top-left of the cell to the top-left of the glyph image.
     int16_t glyph_offset_x;
     int16_t glyph_offset_y;
     uint8_t fg[4];
     uint8_t bg[4];
+    // UPAA_CELL_* values added together.
+    uint32_t flags;
 } UpaaCell;
+
+// Draws an underline in the foreground color below the cell.
+enum { UPAA_CELL_UNDERLINE = 1 << 0 };
 
 typedef struct {
     uint32_t cell_count;
     uint16_t cols;
     uint16_t rows;
     uint8_t background[4];
-    // アトラスの画像が変わるたびに増える。前回と違えばテクスチャを更新する。
+    // Incremented every time the atlas image changes. If it differs from last time, the texture is updated.
     uint64_t atlas_generation;
+    // The cell with the cursor. Used as the position for the candidate window. Meaningless when cursor_visible is false.
+    uint16_t cursor_col;
+    uint16_t cursor_row;
+    bool cursor_visible;
 } UpaaFrame;
 
-// font_size_px は拡大率（Retina なら 2）を掛けたあとのピクセル数。失敗したら NULL。
+// font_size_px is the pixel count after multiplying by the scale factor (2 on Retina). NULL on failure.
 UpaaRenderer *upaa_renderer_new(const char *font_name, double font_size_px);
 void upaa_renderer_free(UpaaRenderer *renderer);
 UpaaMetrics upaa_renderer_metrics(UpaaRenderer *renderer);
-// アトラスの画像。1 ピクセル 1 バイトで、一辺は upaa_renderer_atlas_size ピクセル。
+// Atlas image. 1 byte per pixel; each side is upaa_renderer_atlas_size pixels.
 const uint8_t *upaa_renderer_atlas_pixels(UpaaRenderer *renderer);
 uint32_t upaa_renderer_atlas_size(void);
-// session の今の画面を cells に書く。cells は Metal のバッファの中身を直接指してよい。
-UpaaFrame upaa_renderer_frame(UpaaRenderer *renderer, UpaaSession *session, UpaaCell *cells, size_t cap);
+// Writes the session's current screen into cells. cells may point directly at the contents of the Metal buffer.
+// preedit is the text being composed with IME (UTF-8). NULL if none. Overlaid with an underline starting at the cursor position.
+UpaaFrame upaa_renderer_frame(UpaaRenderer *renderer, UpaaSession *session, const uint8_t *preedit, size_t preedit_len, UpaaCell *cells, size_t cap);
 
-// リンクの確認（--check）
-
-typedef struct {
-    uint16_t glyph;
-    double advance;
-    double bbox_x;
-    double bbox_y;
-    double bbox_w;
-    double bbox_h;
-    char font_name[64];
-} UpaaGlyphInfo;
-
-size_t upaa_selftest_greeting(uint8_t *buf, size_t cap);
-uint64_t upaa_selftest_fnv1a64(const uint8_t *data, size_t len);
-ptrdiff_t upaa_selftest_vt_plain_text(const uint8_t *input, size_t len, uint8_t *out, size_t cap);
-bool upaa_selftest_glyph_info(const char *font_name, double size, uint32_t codepoint, UpaaGlyphInfo *out);
 
 #endif

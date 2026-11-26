@@ -1,12 +1,12 @@
 const std = @import("std");
-// バージョンは build.zig.zon の .version だけに書く。ここから Zig のコードと Swift に渡る。
+// The version is written only in .version of build.zig.zon. It is passed from here to the Zig code and Swift.
 const package = @import("build.zig.zon");
 
-/// scripts/fetch-ghostty-vt.sh が展開する XCFramework の macOS 向けの中身。
+/// The macOS contents of the XCFramework that scripts/fetch-ghostty-vt.sh extracts.
 const ghostty_vt_dir = "vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64_x86_64";
 
 pub fn build(b: *std.Build) void {
-    // 対象は Apple Silicon の macOS 13 以上だけ。SwiftPM 側の platforms と揃える。
+    // Only Apple Silicon with macOS 13 or later is supported. Keep in line with platforms on the SwiftPM side.
     const target = b.resolveTargetQuery(.{
         .cpu_arch = .aarch64,
         .os_tag = .macos,
@@ -14,8 +14,8 @@ pub fn build(b: *std.Build) void {
     });
     const optimize = b.standardOptimizeOption(.{});
 
-    // ターゲットを明示すると Zig は SDK を自動で探さず、フレームワークが見つからない。
-    const sdk = b.option([]const u8, "sdk", "macOS SDK のパス。省略時は xcrun で引く") orelse
+    // If the target is given explicitly, Zig does not search for the SDK automatically, and the frameworks are not found.
+    const sdk = b.option([]const u8, "sdk", "Path to the macOS SDK. If omitted, looked up with xcrun") orelse
         std.mem.trim(u8, b.run(&.{ "xcrun", "--sdk", "macosx", "--show-sdk-path" }), " \n");
 
     const apple = b.addTranslateC(.{
@@ -48,17 +48,17 @@ pub fn build(b: *std.Build) void {
         .posix = posix.createModule(),
     };
 
-    // libghostty-vt は静的ライブラリには含めず、Swift 側の最終リンクで XCFramework から入れる。
+    // libghostty-vt is not included in the static library. It is linked from the XCFramework at the final link on the Swift side.
     const lib = b.addLibrary(.{
         .linkage = .static,
         .name = "upaacore",
         .root_module = createModule(b, opts),
     });
-    // Swift 側のリンカは Zig の compiler_rt を知らないので、静的ライブラリに同梱する。
+    // The Swift-side linker does not know Zig's compiler_rt, so it is bundled into the static library.
     lib.bundle_compiler_rt = true;
     b.installArtifact(lib);
 
-    // テストは実行ファイルになるので、フレームワークと libghostty-vt をここでリンクする。
+    // Tests become executables, so the frameworks and libghostty-vt are linked here.
     const test_mod = createModule(b, opts);
     test_mod.addSystemFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sdk, "System/Library/Frameworks" }) });
     test_mod.addLibraryPath(.{ .cwd_relative = b.pathJoin(&.{ sdk, "usr/lib" }) });
@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) void {
     test_mod.linkFramework("CoreText", .{});
     test_mod.addObjectFile(b.path(ghostty_vt_dir ++ "/libghostty-vt.a"));
     const tests = b.addTest(.{ .root_module = test_mod });
-    const test_step = b.step("test", "Zig 側のテストを走らせる");
+    const test_step = b.step("test", "Run the Zig-side tests");
     test_step.dependOn(&b.addRunArtifact(tests).step);
 }
 

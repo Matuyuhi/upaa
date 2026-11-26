@@ -1,12 +1,12 @@
-//! 起動時に端末の画面へ描く、文字で組んだウーパールーパーの顔。
-//! シェルの出力ではなく、端末に直接書き込むエスケープシーケンスとして作る。
+//! The text-art axolotl face drawn on the terminal screen at startup.
+//! Not shell output: built as escape sequences written directly to the terminal.
 const std = @import("std");
 
 pub const frame_count = 14;
 pub const frame_ms = 110;
 
-/// 最後のコマのあとに書く。画面を消してカーソルを戻し、シェルの出力を受けられる状態にする。
-/// note があれば 1 行目に残す。顔と一緒に消えると読み切れないため。
+/// Written after the last frame. Clears the screen, returns the cursor, and gets the terminal ready to receive shell output.
+/// If note is given, it stays on line 1, since it would be hard to read if it disappeared with the face.
 pub fn finish(buf: []u8, note: []const u8) []const u8 {
     var out: Out = .{ .buf = buf };
     out.put("\x1b[0m\x1b[2J\x1b[H\x1b[?25h");
@@ -27,18 +27,18 @@ const eye_color = "\x1b[1;38;2;255;255;255m";
 const label_color = "\x1b[0;38;2;120;120;130m";
 const note_color = "\x1b[0;38;2;233;111;146m";
 
-/// 外えらは 2 コマおきに外側へ 1 文字ずれて、揺れているように見せる。
+/// The outer gills shift one character outward every 2 frames, so they look like they are wobbling.
 const Gills = struct { top_l: []const u8, top_r: []const u8, mid_l: []const u8, mid_r: []const u8, bot_l: []const u8, bot_r: []const u8 };
 const gills_in: Gills = .{ .top_l = " \\\\\\ ", .top_r = " /// ", .mid_l = " === ", .mid_r = " === ", .bot_l = " /// ", .bot_r = " \\\\\\ " };
 const gills_out: Gills = .{ .top_l = "\\\\\\  ", .top_r = "  ///", .mid_l = "===  ", .mid_r = "  ===", .bot_l = "///  ", .bot_r = "  \\\\\\" };
 const no_gill = "     ";
 
-/// index 番目のコマを buf に書き、書いた部分を返す。cols x rows の画面の中央に置く。
-/// note があれば名前の下に出す（半角の文字数で中央に寄せるので、全角を含むと少し右に寄る）。
+/// Writes the index-th frame to buf and returns the written part. Centered in a cols x rows screen.
+/// If note is given, it is shown below the name. Centering uses half-width character counts, so full-width characters shift it slightly to the right.
 pub fn frame(buf: []u8, cols: u16, rows: u16, index: usize, note: []const u8) []const u8 {
     var out: Out = .{ .buf = buf };
     const gills = if ((index / 2) % 2 == 0) gills_in else gills_out;
-    // 終わり近くで 1 回まばたきする。
+    // Blink once near the end.
     const eye = if (index == frame_count - 5) "-" else "\u{25CF}";
 
     const left: u16 = if (cols > art_width) (cols - art_width) / 2 + 1 else 1;
@@ -69,7 +69,7 @@ const Out = struct {
     buf: []u8,
     len: usize = 0,
 
-    /// 入りきらない分は捨てる。
+    /// Anything that does not fit is discarded.
     fn put(out: *Out, bytes: []const u8) void {
         const n = @min(bytes.len, out.buf.len - out.len);
         @memcpy(out.buf[out.len..][0..n], bytes[0..n]);
@@ -133,7 +133,7 @@ test "frames fit the buffer and differ when the gills move" {
     try std.testing.expect(first.len < a.len);
     try std.testing.expect(!std.mem.eql(u8, first, moved));
     try std.testing.expect(std.mem.indexOf(u8, first, "upaa") != null);
-    // 小さすぎる画面でも位置が 1 行 1 桁目より前に出ない。
+    // Even on a very small screen, the position never goes before row 1, column 1.
     const tiny = frame(&b, 4, 2, 0, "");
     try std.testing.expect(std.mem.indexOf(u8, tiny, "\x1b[1;1H") != null);
 

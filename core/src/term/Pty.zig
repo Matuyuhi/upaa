@@ -1,10 +1,10 @@
-//! PTY と、その上で動く子プロセス（シェル）。
+//! PTY and the child process (shell) running on it.
 const Pty = @This();
 
 const std = @import("std");
 const c = @import("posix");
 
-/// 親側の fd。読むと子の出力、書くと子への入力になる。
+/// Parent-side fd. Reads get the child's output; writes become input to the child.
 master: c_int,
 child: c.pid_t,
 
@@ -21,10 +21,10 @@ pub const Size = struct {
 
 pub const SpawnError = error{ ForkFailed, NoShell };
 
-/// command が null ならユーザーのログインシェルを、ホームディレクトリでログインシェルとして起動する。
-/// null でなければ、今のディレクトリで /bin/sh -c command を実行する（テストや画面の書き出し用）。
+/// If command is null, starts the user's login shell as a login shell in the home directory.
+/// If not null, runs /bin/sh -c command in the current directory (for tests and screen dumps).
 pub fn spawn(command: ?[*:0]const u8, size: Size) SpawnError!Pty {
-    // fork と exec の間では malloc できないので、必要な文字列は fork の前に作る。
+    // malloc is not allowed between fork and exec, so build the needed strings before fork.
     const path: [*:0]const u8 = if (command == null) loginShell() orelse return error.NoShell else "/bin/sh";
     var argv0_buf: [256]u8 = undefined;
     var argv: [4:null]?[*:0]const u8 = if (command) |cmd|
@@ -38,7 +38,7 @@ pub fn spawn(command: ?[*:0]const u8, size: Size) SpawnError!Pty {
     const pid = c.forkpty(&master, null, null, &ws);
     if (pid < 0) return error.ForkFailed;
     if (pid == 0) {
-        // 子プロセス。ここから exec までは async-signal-safe な関数だけを呼ぶ。
+        // Child process. From here to exec, call only async-signal-safe functions.
         if (home) |dir| _ = c.chdir(dir);
         _ = c.setenv("TERM", "xterm-256color", 1);
         _ = c.execv(path, @ptrCast(&argv));
@@ -52,7 +52,7 @@ pub fn resize(pty: Pty, size: Size) void {
     _ = c.ioctl(pty.master, c.TIOCSWINSZ, &ws);
 }
 
-/// 全部書けるまで繰り返す。子が終了しているなどで書けなければ false。
+/// Repeats until everything is written. Returns false if writing fails, e.g. because the child has exited.
 pub fn writeAll(pty: Pty, bytes: []const u8) bool {
     var rest = bytes;
     while (rest.len > 0) {
@@ -66,7 +66,7 @@ pub fn writeAll(pty: Pty, bytes: []const u8) bool {
     return true;
 }
 
-/// 子プロセスを終わらせて回収し、fd を閉じる。
+/// Terminates the child process, reaps it, and closes the fd.
 pub fn deinit(pty: Pty) void {
     _ = c.kill(pty.child, c.SIGHUP);
     _ = c.close(pty.master);
@@ -83,7 +83,7 @@ fn loginShell() ?[*:0]const u8 {
     return c.getenv("SHELL");
 }
 
-/// ログインシェルとして起動する慣習どおり、argv[0] を "-zsh" の形にする。
+/// Sets argv[0] to the "-zsh" form, following the convention for starting a login shell.
 fn loginArgv0(path: [*:0]const u8, buf: []u8) [*:0]const u8 {
     const full = std.mem.span(path);
     const base = if (std.mem.lastIndexOfScalar(u8, full, '/')) |i| full[i + 1 ..] else full;

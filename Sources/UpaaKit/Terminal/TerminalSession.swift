@@ -1,25 +1,25 @@
 import CUpaaCore
 import Foundation
 
-/// Zig 側の端末セッション（PTY、シェル、libghostty-vt の端末）を包む。
+/// Wraps the Zig-side terminal session (PTY, shell, libghostty-vt terminal).
 final class TerminalSession {
     let handle: OpaquePointer
     private let events: Events
 
-    /// 画面が変わった。メインスレッドで呼ばれる。
+    /// The screen changed. Called on the main thread.
     var onWakeup: (() -> Void)? {
         get { events.onWakeup }
         set { events.onWakeup = newValue }
     }
 
-    /// シェルが終了した。メインスレッドで呼ばれる。
+    /// The shell exited. Called on the main thread.
     var onExit: (() -> Void)? {
         get { events.onExit }
         set { events.onExit = newValue }
     }
 
-    /// command が nil ならログインシェルを、そうでなければ /bin/sh -c command を起動する。
-    /// showIntro が true なら、シェルの出力を出す前に起動時の顔を画面に描く。
+    /// If command is nil, starts the login shell; otherwise starts /bin/sh -c command.
+    /// If showIntro is true, draws the startup face on screen before the shell's output.
     init?(cols: UInt16, rows: UInt16, command: String? = nil, showIntro: Bool = false) {
         let events = Events()
         var callbacks = UpaaSessionCallbacks(
@@ -39,7 +39,7 @@ final class TerminalSession {
     }
 
     deinit {
-        // 読み取りスレッドの終了を待つので、これ以降コールバックは来ない。
+        // Waits for the read thread to exit, so no callbacks arrive after this point.
         upaa_session_free(handle)
     }
 
@@ -48,7 +48,7 @@ final class TerminalSession {
         upaa_session_write(handle, bytes, bytes.count)
     }
 
-    /// キーを 1 回押したこと。text はそのキーで入力される文字（無ければ nil）。
+    /// A key was pressed once. text is the character this key inputs (nil if none).
     func key(code: UInt16, isRepeat: Bool, mods: UInt8, unshifted: UInt32, text: String?) {
         let bytes = text.map { Array($0.utf8) } ?? []
         bytes.withUnsafeBufferPointer { buffer in
@@ -67,25 +67,25 @@ final class TerminalSession {
         upaa_session_resize(handle, cols, rows, UInt32(cellWidth), UInt32(cellHeight))
     }
 
-    /// 起動時の顔と一緒に出すお知らせ。顔を流し終えたあとに呼んでも何も起きない。
+    /// Notice shown with the startup face. Calling it after the face has finished playing does nothing.
     func setIntroNote(_ text: String) {
         upaa_session_set_intro_note(handle, text)
     }
 
-    /// 画面のプレーンテキスト。
+    /// Plain text of the screen.
     func plainText() -> String {
         var out = [UInt8](repeating: 0, count: 64 * 1024)
         let n = upaa_session_plain_text(handle, &out, out.count)
         return n >= 0 ? String(decoding: out.prefix(min(n, out.count)), as: UTF8.self) : ""
     }
 
-    /// 前回の呼び出しから画面が変わっていれば true。
+    /// true if the screen has changed since the previous call.
     func takeDirty() -> Bool {
         upaa_session_take_dirty(handle)
     }
 
-    /// Zig のスレッドから渡される通知の受け口。セッションより長く生きる必要があるので別のオブジェクトにしている
-    /// （メインスレッドに積んだ通知が、セッションの解放後に実行されることがある）。
+    /// Receiver for notifications passed from the Zig thread. It must live longer than the session, so it is a separate object
+    /// (a notification queued on the main thread may run after the session has been freed).
     private final class Events {
         var onWakeup: (() -> Void)?
         var onExit: (() -> Void)?

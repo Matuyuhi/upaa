@@ -1,11 +1,11 @@
-# 同梱している第三者のソフトウェア
+# Third-party software
 
-upaa は libghostty-vt 1.0.2 を静的にリンクして配布している。libghostty-vt 自身と、その中にコンパイルされているライブラリは次のとおり。
-一覧は、ghostty のタグ `vt-1.0.2` にある `deps/libghostty-vt-third-party.json` の「linked」の項目から取った。
-ライセンスの文面は、libghostty-vt 1.0.2 の公式の配布物（ソースと依存ライブラリ。どちらも minisign の署名を確かめたもの）に入っているファイルをそのまま載せている。
-uucode が参照している 2 つ（Bjoern Hoehrmann の UTF-8 デコーダと Unicode のデータのライセンス）だけは配布物に入っていないので、uucode のリポジトリ（https://github.com/jacobsandlund/uucode）のタグ `v0.2.0` の `licenses/` から取った。
+upaa is distributed with libghostty-vt 1.0.2 statically linked. The table lists libghostty-vt itself and the libraries compiled into it.
+The list comes from the "linked" entries of `deps/libghostty-vt-third-party.json` at the ghostty tag `vt-1.0.2`.
+The license texts below are copied from the official libghostty-vt 1.0.2 source and dependency tarballs, whose minisign signatures were verified.
+The two licenses that uucode refers to (a UTF-8 decoder by Bjoern Hoehrmann and the Unicode data license) are not in those tarballs, so they come from the `licenses/` directory of the uucode repository (https://github.com/jacobsandlund/uucode) at tag `v0.2.0`.
 
-| 名前 | バージョン | ライセンス | 入手元 |
+| Name | Version | License | Source |
 |---|---|---|---|
 | libghostty-vt | 1.0.2 | MIT | https://github.com/ghostty-org/ghostty |
 | highway | 1.2.0 | Apache-2.0 OR BSD-3-Clause | https://deps.files.ghostty.org/highway-66486a10623fa0d72fe91260f96c892e41aceb06.tar.gz |
@@ -14,7 +14,7 @@ uucode が参照している 2 つ（Bjoern Hoehrmann の UTF-8 デコーダと 
 | uucode | 0.2.0 | MIT AND Unicode-3.0 | https://deps.files.ghostty.org/uucode-1fb73433bba5d93366c57f23ff2e9d7939746500.tar.gz |
 | wuffs | 0.4.0-alpha.10 | Apache-2.0 OR MIT | https://deps.files.ghostty.org/wuffs-7411f488fe2e2c205c3d3b3d28638b7356522930.tar.gz |
 
-## libghostty-vt（MIT）
+## libghostty-vt (MIT)
 
 ````
 MIT License
@@ -40,7 +40,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ````
 
-## highway（Apache-2.0 と BSD-3-Clause のどちらかを選べる。BSD-3-Clause で使う）
+## highway (Apache-2.0 OR BSD-3-Clause; used under BSD-3-Clause)
 
 ````
 Copyright (c) The Highway Project Authors. All rights reserved.
@@ -71,7 +71,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ````
 
-## simdutf（Apache-2.0 と MIT のどちらかを選べる。MIT で使う）
+## simdutf (Apache-2.0 OR MIT; used under MIT)
 
 ````
 Copyright 2021 The simdutf authors
@@ -94,7 +94,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ````
 
-## translate_c（MIT）
+## translate_c (MIT)
 
 ````
 The MIT License (Expat)
@@ -120,7 +120,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ````
 
-## uucode（MIT。Unicode のデータなどを含む）
+## uucode (MIT; includes Unicode data and a UTF-8 decoder under their own licenses)
 
 ````
 # uucode license
@@ -211,7 +211,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ````
 
-## wuffs（Apache-2.0 と MIT のどちらかを選べる。MIT で使う）
+## wuffs (Apache-2.0 OR MIT; used under MIT)
 
 ````
 Copyright 2023 The Wuffs Authors

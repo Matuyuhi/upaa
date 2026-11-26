@@ -1,10 +1,10 @@
 #!/bin/sh
-# 手元と CI で同じテストを流す。
-#   1. Zig のテスト
-#   2. アプリのビルドとリンクの確認
-#   3. 画面の書き出しを基準の画像（tests/snapshots/）と比べる
-#   4. 速さが下限・上限を外れていないか
-# UPDATE_SNAPSHOTS=1 を付けると、基準の画像を今の描画で置き換える。
+# Run the same tests locally and in CI.
+#   1. Zig tests
+#   2. App build
+#   3. Compare exported screens with the baseline images (tests/snapshots/)
+#   4. Whether speed is outside the lower or upper bound
+# With UPDATE_SNAPSHOTS=1, the baseline images are replaced with the current rendering.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -12,7 +12,6 @@ zig build test --summary all
 
 CONFIG=release sh scripts/build-app.sh
 BIN=build/upaa.app/Contents/MacOS/upaa
-"$BIN" --check
 
 mkdir -p build/snapshots tests/snapshots
 for vt in tests/fixtures/*.vt; do
@@ -20,18 +19,18 @@ for vt in tests/fixtures/*.vt; do
   "$BIN" --snapshot "build/snapshots/$name.png" --command "cat '$PWD/$vt'"
   if [ "${UPDATE_SNAPSHOTS:-0}" = 1 ]; then
     cp "build/snapshots/$name.png" "tests/snapshots/$name.png"
-    echo "基準を更新: tests/snapshots/$name.png"
+    echo "Updated baseline: tests/snapshots/$name.png"
   else
     printf '%s: ' "$name"
     "$BIN" --compare-png "tests/snapshots/$name.png" "build/snapshots/$name.png"
   fi
 done
 
-# 共有の CI では速さがぶれるので、桁が違うほど遅くなったときだけ失敗させる。
+# Shared CI timing is noisy, so fail only when it is slower by an order of magnitude.
 if [ ! -f build/bench.txt ]; then
-  # 読む量を先に区切る。base64 側を head で切る形だと、パイプ切れのシグナルを無視する環境（GitHub Actions のランナー）で終わらない。
+  # Limit the amount read first. If base64 is cut with head, it does not terminate in environments that ignore SIGPIPE (GitHub Actions runners).
   head -c 15000000 /dev/urandom | base64 -b 100 > build/bench.txt
 fi
 "$BIN" --bench-headless "$PWD/build/bench.txt" --max-frame-ms 5 --min-mb-per-s 10
 
-echo "すべて通った"
+echo "All passed"

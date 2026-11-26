@@ -1,8 +1,8 @@
 name: release
 
-# 手で実行する（Actions の画面の「Run workflow」か、gh workflow run release.yml）。
-# build.zig.zon の .version を読み、テストを通してからビルドして、v<番号> のタグと Release を作る。
-# 同じ番号のタグがすでにあれば失敗する。出すときは、先に build.zig.zon の番号を上げて main に入れておく。
+# Run by hand (the "Run workflow" button in Actions, or gh workflow run release.yml).
+# Reads .version from build.zig.zon, runs the tests, builds, then creates the v<version> tag and Release.
+# Fails if a tag with the same version already exists. To release, first bump the version in build.zig.zon and merge it into main.
 on:
   workflow_dispatch:
 
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    # main 以外からは出さない。
+    # Do not release from anything other than main.
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
     env:
@@ -19,46 +19,46 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     timeout-minutes: 30
     permissions:
-      # タグと Release を作る
+      # Create the tag and Release
       contents: write
-      # ビルドの出どころの証明（attestation）を付ける
+      # Attach build provenance (attestation)
       id-token: write
       attestations: write
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - name: 出すバージョンを決める
+      - name: Determine the version to release
         id: version
         run: |
           version="$(sed -n 's/.*\.version = "\([^"]*\)".*/\1/p' build.zig.zon)"
-          [ -n "$version" ] || { echo "build.zig.zon からバージョンを読めない"; exit 1; }
+          [ -n "$version" ] || { echo "Cannot read the version from build.zig.zon"; exit 1; }
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "v$version はすでに出ている。build.zig.zon の番号を上げる"; exit 1
+            echo "v$version is already released. Bump the version in build.zig.zon"; exit 1
           fi
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # 配るものは毎回まっさらな状態から作る。テスト用のワークフローのキャッシュは使わない。
-      - name: Zig と minisign を入れる
+      # Build the release artifacts from a clean state every time. Do not use the cache from the test workflow.
+      - name: Install Zig and minisign
         run: |
           brew install zig minisign
-          zig version | grep -q '^0\.17\.' || { echo "Zig 0.17.x が必要: $(zig version)"; exit 1; }
+          zig version | grep -q '^0\.17\.' || { echo "Zig 0.17.x is required: $(zig version)"; exit 1; }
 
-      - name: Metal Toolchain を入れる
+      - name: Install Metal Toolchain
         run: xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
 
-      - name: libghostty-vt を取得する
+      - name: Fetch libghostty-vt
         run: sh scripts/fetch-ghostty-vt.sh
 
-      - name: テスト（release ビルドもここで作る）
+      - name: Test (the release build is also made here)
         run: sh scripts/test.sh
 
-      - name: ビルドしたもののバージョンを確かめる
+      - name: Check the version of the built app
         run: |
           built="$(build/upaa.app/Contents/MacOS/upaa --version)"
-          [ "$built" = "${{ steps.version.outputs.version }}" ] || { echo "ビルドしたものは $built で、build.zig.zon の ${{ steps.version.outputs.version }} と違う"; exit 1; }
+          [ "$built" = "${{ steps.version.outputs.version }}" ] || { echo "The built version is $built, not ${{ steps.version.outputs.version }} from build.zig.zon"; exit 1; }
 
-      - name: 配るファイルを作る
+      - name: Create the files to distribute
         run: |
           mkdir -p dist
           ditto -c -k --keepParent build/upaa.app dist/upaa-macos-arm64.zip
@@ -68,8 +68,8 @@ jobs:
         with:
           subject-path: dist/upaa-macos-arm64.zip
 
-      # タグは、このワークフローが動いている commit に付く。
-      - name: タグと Release を作る
+      # The tag is placed on the commit this workflow runs on.
+      - name: Create the tag and Release
         run: |
           gh release create "${{ steps.version.outputs.tag }}" dist/upaa-macos-arm64.zip dist/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes

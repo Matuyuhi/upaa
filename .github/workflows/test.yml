@@ -9,14 +9,14 @@ permissions:
   contents: read
 
 jobs:
-  # 使っている action が actions.lock に固定した commit のままかを確かめる。
-  # action を足したり上げたりしたら、手元で gh actions-lock を実行して lockfile を commit する。
+  # Check that the actions still use the commits pinned in actions.lock.
+  # When adding or upgrading an action, run gh actions-lock locally and commit the lockfile.
   lockfile:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: lockfile を確かめる
+      - name: Check the lockfile
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -24,26 +24,26 @@ jobs:
           gh actions-lock --verify
 
   test:
-    # スクリーンショットを比べるので、フォントの描画が変わらないよう macOS のバージョンを固定する（xcode-27 は macOS 27）。
-    # 上げるときは、落ちた比較の画像を見てから基準（tests/snapshots/）を作り直す。
+    # Snapshots are compared, so the macOS version is pinned to keep font rendering the same (xcode-27 is macOS 27).
+    # When upgrading, look at the failing comparison images before regenerating the baselines (tests/snapshots/).
     runs-on: xcode-27
     env:
-      # イメージの既定は Xcode 27.1。手元と同じ 27.2 を使う。
+      # The image default is Xcode 27.1. Use 27.2, the same as local.
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # 取得スクリプト（バージョンと SHA-256 を固定している）が変わらない限り、取得し直さない。
-      - name: libghostty-vt のキャッシュ
+      # Do not fetch again unless the fetch script (which pins the version and SHA-256) changes.
+      - name: libghostty-vt cache
         id: ghostty-vt
         uses: actions/cache@v6.1.0
         with:
           path: vendor/ghostty-vt
           key: ghostty-vt-${{ hashFiles('scripts/fetch-ghostty-vt.sh') }}
 
-      # Zig と SwiftPM の途中の生成物。ソースが変わった分だけ作り直される。
-      - name: ビルドのキャッシュ
+      # Intermediate outputs of Zig and SwiftPM. Rebuilt only for the parts whose sources changed.
+      - name: Build cache
         uses: actions/cache@v6.1.0
         with:
           path: |
@@ -53,25 +53,25 @@ jobs:
           key: build-${{ runner.os }}-${{ hashFiles('build.zig', 'build.zig.zon', 'Package.swift', 'core/**', 'Sources/**') }}
           restore-keys: build-${{ runner.os }}-
 
-      - name: Zig を入れる
+      - name: Install Zig
         run: |
           brew install zig
-          # libghostty-vt 1.0.x と build.zig は Zig 0.17.x が前提。
-          zig version | grep -q '^0\.17\.' || { echo "Zig 0.17.x が必要: $(zig version)"; exit 1; }
+          # libghostty-vt 1.0.x and build.zig assume Zig 0.17.x.
+          zig version | grep -q '^0\.17\.' || { echo "Zig 0.17.x is required: $(zig version)"; exit 1; }
 
-      - name: Metal Toolchain を入れる
+      - name: Install Metal Toolchain
         run: xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
 
-      - name: libghostty-vt を取得する
+      - name: Fetch libghostty-vt
         if: steps.ghostty-vt.outputs.cache-hit != 'true'
         run: |
           brew install minisign
           sh scripts/fetch-ghostty-vt.sh
 
-      - name: テスト
+      - name: Test
         run: sh scripts/test.sh
 
-      - name: 書き出した画面を残す
+      - name: Keep the exported screens
         if: failure()
         uses: actions/upload-artifact@v7.0.2
         with:

@@ -1,40 +1,50 @@
 # upaa
 
-macOS 専用の自作ターミナルエミュレータ。Swift（AppKit）と Zig で書き、端末エミュレーションの中身は libghostty-vt（安定版の C ABI）に任せる。目標は普段使いできること。
+A homemade terminal emulator for macOS only. Written in Swift (AppKit) and Zig. Terminal emulation itself is left to libghostty-vt (stable C ABI). The goal is to be usable for daily work.
 
-経緯、確認済みの事実、未確認事項、マイルストーンは `docs/handoff.md` にある。着手前に読むこと。
+The background, confirmed facts, unconfirmed items, and milestones are in `docs/handoff.md`. Read it before starting.
 
-## 決まっていること
+## Decided
 
-- 対象は macOS 13 以上の Apple Silicon（arm64）のみ。クロスプラットフォーム対応はしない。
-- 言語は Swift と Zig の混成。UI・IME・Metal の呼び出しは Swift、それ以外の中核（PTY、libghostty-vt の呼び出し、描画用データの組み立て、グリフのキャッシュ）は Zig。Zig は 0.17.x。
-- ビルドは SwiftPM と `scripts/build-app.sh`（`zig build` → `swift build` → `build/upaa.app`）。
-- libghostty-vt はビルド済みの XCFramework を `scripts/fetch-ghostty-vt.sh` で取得する。リポジトリには含めない。
-- libghostty-vt 1.0.x を使う。描画とフォントまで含むフル libghostty（GhosttyKit など）は API が未安定なので使わない。
-- 描画は Metal、グリフの生成は CoreText。
-- 日本語の表示と IME は後回しにしない。
+- Target is macOS 13 or later on Apple Silicon (arm64) only. No cross-platform support.
+- The language is a mix of Swift and Zig. UI, IME, and Metal calls are in Swift. The rest of the core (PTY, libghostty-vt calls, building drawing data, glyph cache) is in Zig. Zig is 0.17.x.
+- Build uses SwiftPM and `scripts/build-app.sh` (`zig build` → `swift build` → `build/upaa.app`).
+- The prebuilt libghostty-vt XCFramework is fetched by `scripts/fetch-ghostty-vt.sh`. It is not included in the repository.
+- Use libghostty-vt 1.0.x. The full libghostty, including drawing and fonts (such as GhosttyKit), is not used because its API is not yet stable.
+- Drawing uses Metal. Glyph generation uses CoreText.
+- Display of Japanese text and IME are not postponed.
 
-## 構成
+## Layout
 
-- `core/src/` — Zig の中核。C に公開する関数（`export fn`）は `root.zig` だけに置き、中身は役割ごとのフォルダに書く。
-  - `c/` translate-c で取り込むヘッダ、`term/` 端末セッション（PTY、読み取りスレッド、libghostty-vt）、`font/` フォントとグリフのアトラス、`render/` Metal に渡すセルのデータの組み立て、`selftest.zig` リンクの確認用。
-- `Sources/CUpaaCore/` — Zig の関数の C ヘッダ。`root.zig` と対で直し、形を変えたら ABI の番号を両方で上げる。
-- `Sources/UpaaKit/` — Swift の中身（`App/`、`Terminal/`、`Render/`、`SelfTest/`）。`Sources/upaa/` は起動するだけ。
-- `Shaders/` — Metal のシェーダ。`scripts/build-app.sh` がコンパイルして `.app` に入れる。セルのデータの並びは `core/src/render/Cell.zig`、C ヘッダの `UpaaCell`、シェーダの `Cell` の 3 か所で揃える。
-- 描画の確認は `build/upaa.app/Contents/MacOS/upaa --snapshot <png> [--input <文字列>]` で 1 フレームを PNG に書き出して見る。キー入力の確認は `--type <文字列>`、計測は `--bench-cat <ファイル>` と `--bench-keys`（どれもウィンドウが開く）。
-- テストは `sh scripts/test.sh`（Zig のテスト、`--check`、`tests/fixtures/*.vt` の画面と `tests/snapshots/` の基準の画像の比較、速さの下限・上限）。描画を意図して変えたときは `UPDATE_SNAPSHOTS=1 sh scripts/test.sh` で基準を置き換え、画像を見てから commit する。GitHub Actions（`.github/workflows/test.yml`）も同じスクリプトを呼ぶ。
-- `swift build` と PTY を使うテスト（`zig build test`）は Claude Code のサンドボックスの中では動かない。
+- `core/src/` — Zig core. Functions exported to C (`export fn`) go only in `root.zig`. The implementation goes in folders by role.
+  - `c/` headers imported with translate-c, `term/` terminal session (PTY, read thread, libghostty-vt), `font/` font and glyph atlas, `render/` building cell data for Metal.
+- `Sources/CUpaaCore/` — C headers for the Zig functions. Edit them together with `root.zig`.
+- `Sources/UpaaKit/` — Swift implementation (`App/`, `Terminal/`, `Render/`). `Sources/upaa/` only launches the app.
+- `Shaders/` — Metal shaders. `scripts/build-app.sh` compiles them and puts them into the `.app`. The layout of cell data must match in three places: `core/src/render/Cell.zig`, the C header `UpaaCell`, and the shader `Cell`.
+- To check drawing, write one frame to a PNG with `build/upaa.app/Contents/MacOS/upaa --snapshot <png> [--input <string>]` and view it.
+- Tests: `sh scripts/test.sh` (Zig tests, comparison of the screens in `tests/fixtures/*.vt` against the reference images in `tests/snapshots/`, lower and upper bounds on speed). When a drawing change is intended, replace the references with `UPDATE_SNAPSHOTS=1 sh scripts/test.sh`, and commit only after checking the images. GitHub Actions (`.github/workflows/test.yml`) calls the same script.
+- `swift build` and tests that use a PTY (`zig build test`) do not run inside the Claude Code sandbox.
 
-## バージョンとリリース
+## Implementation approach
 
-- バージョンは `build.zig.zon` の `.version` だけに書く。Zig のコード、Swift（`upaa --version`、更新確認）、`.app` の `Info.plist` はここから取る。ほかの場所に番号を書かない。
-- リリースは、`build.zig.zon` の番号を上げて `main` に入れてから、`.github/workflows/release.yml` を手で実行する（`gh workflow run release.yml`）。テストを通してから、`v<番号>` のタグと Release（zip と `SHA256SUMS`）を作る。タグは手で打たない。同じ番号がすでに出ていれば失敗する。
-- インストールは `install.sh`（`curl ... | sh`）。`~/Applications/upaa.app` と `~/.local/bin/upaa` を置く。`upaa` コマンドの中身は `scripts/upaa-launcher.sh`。
-- 起動時の更新確認は `Sources/UpaaKit/App/UpdateCheck.swift`。1 日 1 回だけ GitHub に問い合わせ、知らせるだけで更新はしない。
+Do not proceed by just piling on code. Avoid increasing the amount of code itself.
 
-## 守ること
+- Before adding code, look for a way that needs no addition. First consider whether changing or removing existing code, or hooking into an existing mechanism, can solve the problem.
+- Do not add launch options, public functions, or hooks only for checking or measuring. Verify with tests or a throwaway local script. If one must stay, state the reason and get confirmation before adding it.
+- When a problem occurs, do not stack workarounds. Identify the cause and fix it at the source. If a workaround must go in before the cause is identified, consult first.
+- Remove code that is no longer needed because the premise changed, in the same change.
+- Reports of changes state how many lines were added and how many were removed.
 
-- libghostty-vt の関数名や使い方は、タグ `vt-1.0.2` のヘッダ（`include/ghostty/vt/`）と `example/c-vt-*` を正とする。Ghostling は 1.0 より前のコミットに固定されていて、1.0.2 に存在しない関数を呼んでいる。
-- 報告では、確認した事実と推測を分けて書く。動かしていないものを「動く」と書かない。
-- 外部からのダウンロード、公開、削除や上書きを伴う操作は、対象と影響を示してユーザーの確認を取ってから行う。
-- 秘密鍵やトークンなどの認証情報をユーザーに入力させない。
+## Version and release
+
+- The version is written only in `.version` of `build.zig.zon`. Zig code, Swift (`upaa --version`, update check), and the `.app`'s `Info.plist` take it from there. Do not write the number anywhere else.
+- For a release, raise the number in `build.zig.zon` and merge it into `main`. Then run `.github/workflows/release.yml` by hand (`gh workflow run release.yml`). After the tests pass, it creates the `v<number>` tag and the Release (zip and `SHA256SUMS`). Do not type the tag by hand. If the same number has already been released, it fails.
+- Install is via `install.sh` (`curl ... | sh`). It places `~/Applications/upaa.app` and `~/.local/bin/upaa`. The contents of the `upaa` command come from `scripts/upaa-launcher.sh`.
+- The update check at startup is `Sources/UpaaKit/App/UpdateCheck.swift`. It queries GitHub once a day. It only notifies; it does not update.
+
+## Rules to follow
+
+- Function names and usage for libghostty-vt follow the header at tag `vt-1.0.2` (`include/ghostty/vt/`) and `example/c-vt-*`, which are authoritative. Ghostling is pinned to a commit from before 1.0 and calls functions that do not exist in 1.0.2.
+- In reports, separate confirmed facts from guesses. Do not write that something "works" if it was not run.
+- For operations involving external downloads, publishing, deletion, or overwriting, show the target and impact and get the user's confirmation before doing them.
+- Do not have the user enter credentials such as private keys or tokens.

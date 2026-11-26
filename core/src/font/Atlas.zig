@@ -1,4 +1,4 @@
-//! グリフを 1 枚の 8 ビット画像（濃度だけ）に詰めて覚えておく。Swift 側がこの画像を Metal のテクスチャにする。
+//! Keeps glyphs packed into one 8-bit image (density only). The Swift side turns this image into a Metal texture.
 const Atlas = @This();
 
 const std = @import("std");
@@ -9,23 +9,23 @@ const alloc = std.heap.c_allocator;
 
 pub const size = 2048;
 
-/// size x size。行は上から下の順。
+/// size x size. Rows run from top to bottom.
 pixels: []u8,
 glyphs: std.AutoHashMapUnmanaged(u21, Glyph) = .empty,
-/// 次に置く位置（棚に左から並べ、いっぱいになったら次の棚へ）。
+/// Where the next glyph goes (placed left to right on a shelf; moves to the next shelf when full).
 cursor_x: u32 = 1,
 cursor_y: u32 = 1,
 shelf_height: u32 = 0,
-/// 画像が変わるたびに増える。Swift 側はこれを見てテクスチャを更新する。
+/// Increases each time the image changes. The Swift side watches this to update the texture.
 generation: u64 = 1,
 
 pub const Glyph = extern struct {
-    /// アトラス内の位置と大きさ。大きさ 0 は描くものが無い（空白など）。
+    /// Position and size in the atlas. Size 0 means nothing to draw (e.g. a blank).
     x: u16 = 0,
     y: u16 = 0,
     width: u16 = 0,
     height: u16 = 0,
-    /// セルの左上から、グリフの画像の左上まで。
+    /// From the top-left of the cell to the top-left of the glyph image.
     offset_x: i16 = 0,
     offset_y: i16 = 0,
 };
@@ -41,7 +41,7 @@ pub fn deinit(atlas: *Atlas) void {
     alloc.free(atlas.pixels);
 }
 
-/// 初めての文字はここで描く。描けない文字やアトラスが満杯のときは、空のグリフを返す。
+/// New characters are drawn here on first use. Characters that cannot be drawn, or when the atlas is full, return an empty glyph.
 pub fn get(atlas: *Atlas, face: Face, codepoint: u21) Glyph {
     if (atlas.glyphs.get(codepoint)) |glyph| return glyph;
     const glyph = atlas.rasterize(face, codepoint) orelse Glyph{};
@@ -58,7 +58,7 @@ fn rasterize(atlas: *Atlas, face: Face, codepoint: u21) ?Glyph {
     _ = c.CTFontGetBoundingRectsForGlyphs(resolved.font, c.kCTFontOrientationHorizontal, &glyphs, &rect, 1);
     if (rect.size.width <= 0 or rect.size.height <= 0) return Glyph{};
 
-    // ベースライン原点・上向きの座標で、グリフを囲むピクセルの範囲。アンチエイリアスのにじみ分を 1 ずつ広げる。
+    // Pixel range enclosing the glyph, in baseline-origin upward coordinates. Expand by 1 on each side for the antialiasing bleed.
     const x0: i32 = @as(i32, @intFromFloat(@floor(rect.origin.x))) - 1;
     const y0: i32 = @as(i32, @intFromFloat(@floor(rect.origin.y))) - 1;
     const x1: i32 = @as(i32, @intFromFloat(@ceil(rect.origin.x + rect.size.width))) + 1;
@@ -68,7 +68,7 @@ fn rasterize(atlas: *Atlas, face: Face, codepoint: u21) ?Glyph {
 
     const pos = atlas.reserve(width, height) orelse return null;
 
-    // アトラスの該当部分をそのまま描画先にする。
+    // Use the corresponding part of the atlas directly as the drawing target.
     const ctx = c.CGBitmapContextCreate(
         atlas.pixels.ptr + pos.y * size + pos.x,
         width,
@@ -95,7 +95,7 @@ fn rasterize(atlas: *Atlas, face: Face, codepoint: u21) ?Glyph {
     };
 }
 
-/// 隣のグリフがにじんで見えないよう、1 ピクセルずつ間を空けて場所を取る。
+/// Reserve 1 pixel between glyphs so that neighbors do not show through each other.
 fn reserve(atlas: *Atlas, width: u32, height: u32) ?struct { x: u32, y: u32 } {
     if (width + 2 > size) return null;
     if (atlas.cursor_x + width + 1 > size) {
@@ -134,7 +134,7 @@ test "glyphs are drawn once and cached" {
 
     const kana = atlas.get(face, 0x3042);
     try std.testing.expect(atlas.inkSum(kana) > 0);
-    // 全角は 1 セルより広い。
+    // Full-width characters are wider than one cell.
     try std.testing.expect(kana.width > face.metrics.cell_width);
 
     try std.testing.expectEqual(@as(u16, 0), atlas.get(face, ' ').width);

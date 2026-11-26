@@ -4,13 +4,13 @@ import ImageIO
 import Metal
 import UniformTypeIdentifiers
 
-/// ウィンドウを出さずに端末の画面を描く。描画の確認、基準の画像との比較、計測に使う。
+/// Draws the terminal screen without showing a window. Used for render checks, comparison against baseline images, and measurement.
 enum Snapshot {
     enum Failure: Error {
         case message(String)
     }
 
-    /// シェル（command があればそのコマンド）を起動し、input を送って出力が落ち着くのを待ってから、画面を url に書く。
+    /// Starts the shell (or command if given), sends input, waits for the output to settle, then writes the screen to url.
     static func write(to url: URL, cols: Int, rows: Int, command: String?, input: String?) throws {
         let offscreen = try Offscreen(cols: cols, rows: rows, command: command)
         waitUntilQuiet(offscreen.session)
@@ -24,7 +24,7 @@ enum Snapshot {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         offscreen.target.getBytes(
             &pixels, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
-        // テクスチャは BGRA の順。
+        // Texture is in BGRA order.
         let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue
         guard let provider = CGDataProvider(data: Data(pixels) as CFData),
               let image = CGImage(
@@ -32,13 +32,13 @@ enum Snapshot {
                   space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGBitmapInfo(rawValue: bitmapInfo),
                   provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
               let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
-        else { throw Failure.message("画像を作れない") }
+        else { throw Failure.message("failed to create image") }
         CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else { throw Failure.message("PNG を書けない: \(url.path)") }
+        guard CGImageDestinationFinalize(destination) else { throw Failure.message("failed to write PNG: \(url.path)") }
     }
 
-    /// 2 枚の PNG で、色がはっきり違うピクセルの割合（0〜1）。大きさが違えば 1。
-    /// OS のバージョンでフォントの縁の描き方が少し変わるので、小さな差は数えない。
+    /// Proportion (0 to 1) of pixels whose colors differ clearly between two PNGs. 1 if the sizes differ.
+    /// Font edges render slightly differently across OS versions, so small differences are not counted.
     static func difference(_ a: URL, _ b: URL) throws -> Double {
         let (first, second) = (try rgba(a), try rgba(b))
         guard first.width == second.width, first.height == second.height else { return 1 }
@@ -50,16 +50,16 @@ enum Snapshot {
         return Double(different) / Double(first.width * first.height)
     }
 
-    /// ファイルを cat し終えるまでの時間（描画なし）と、その画面を繰り返し描いたときの 1 フレームの組み立て時間を測る。
+    /// Measures the time until the file has finished being cat'ed (no rendering), and the time to build one frame when that screen is drawn repeatedly.
     static func bench(file: String, cols: Int, rows: Int) throws -> (megabytesPerSecond: Double, frameMilliseconds: Double) {
         let offscreen = try Offscreen(cols: cols, rows: rows, command: nil)
         waitUntilQuiet(offscreen.session)
 
-        // 入力のエコーと区別できるよう、終わりの目印はシェルに計算させる。
+        // So the end marker can be told apart from echoed input, have the shell compute it.
         let start = Date()
         offscreen.session.write("cat '\(file)'; echo upaa-done-$((40+2))\n")
         while !offscreen.session.plainText().contains("upaa-done-42") {
-            if Date().timeIntervalSince(start) > 120 { throw Failure.message("cat が 120 秒で終わらない") }
+            if Date().timeIntervalSince(start) > 120 { throw Failure.message("cat did not finish within 120 seconds") }
             usleep(2_000)
         }
         let elapsed = Date().timeIntervalSince(start)
@@ -71,7 +71,7 @@ enum Snapshot {
         return (Double(bytes) / 1e6 / elapsed, seconds / Double(frames) * 1000)
     }
 
-    /// 出力が 300 ミリ秒止まるまで待つ（最長 10 秒）。
+    /// Waits until output has been quiet for 300 ms (up to 10 seconds at most).
     private static func waitUntilQuiet(_ session: TerminalSession) {
         let deadline = Date().addingTimeInterval(10)
         var quietSince = Date()
@@ -85,18 +85,18 @@ enum Snapshot {
     private static func rgba(_ url: URL) throws -> (width: Int, height: Int, pixels: [UInt8]) {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
-        else { throw Failure.message("画像を読めない: \(url.path)") }
+        else { throw Failure.message("failed to read image: \(url.path)") }
         var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
         guard let context = CGContext(
             data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8,
             bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-        else { throw Failure.message("画像を展開できない: \(url.path)") }
+        else { throw Failure.message("failed to decode image: \(url.path)") }
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return (image.width, image.height, pixels)
     }
 
-    /// 端末セッションと、その画面を描くテクスチャ。拡大率は 2（Retina）に固定している。
+    /// Terminal session and the texture its screen is drawn to. The scale is fixed at 2 (Retina).
     private final class Offscreen {
         let session: TerminalSession
         let target: MTLTexture
@@ -104,10 +104,10 @@ enum Snapshot {
         private let queue: MTLCommandQueue
 
         init(cols: Int, rows: Int, command: String?) throws {
-            guard let device = MTLCreateSystemDefaultDevice() else { throw Failure.message("Metal のデバイスが無い") }
+            guard let device = MTLCreateSystemDefaultDevice() else { throw Failure.message("no Metal device") }
             renderer = try Renderer(device: device, fontName: Defaults.fontName, fontSize: Defaults.fontSize, scale: 2)
             guard let session = TerminalSession(cols: UInt16(cols), rows: UInt16(rows), command: command) else {
-                throw Failure.message("端末セッションを起動できない")
+                throw Failure.message("failed to start terminal session")
             }
             self.session = session
 
@@ -117,15 +117,15 @@ enum Snapshot {
             descriptor.usage = [.renderTarget]
             descriptor.storageMode = .shared
             guard let target = device.makeTexture(descriptor: descriptor), let queue = device.makeCommandQueue() else {
-                throw Failure.message("描画先を作れない")
+                throw Failure.message("failed to create drawing target")
             }
             self.target = target
             self.queue = queue
         }
 
-        /// 今の画面を target に描く。戻り値は CPU 側で 1 フレームを組み立てるのにかかった秒数。
+        /// Draws the current screen into target. Returns the seconds spent building one frame on the CPU.
         func draw() throws -> Double {
-            guard let commandBuffer = queue.makeCommandBuffer() else { throw Failure.message("描画命令を作れない") }
+            guard let commandBuffer = queue.makeCommandBuffer() else { throw Failure.message("failed to create draw command") }
             let pass = MTLRenderPassDescriptor()
             pass.colorAttachments[0].texture = target
             pass.colorAttachments[0].storeAction = .store

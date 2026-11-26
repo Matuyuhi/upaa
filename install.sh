@@ -1,18 +1,18 @@
 #!/bin/sh
-# upaa を入れる（入れ直す）。
+# Install (or reinstall) upaa.
 #   curl -fsSL https://raw.githubusercontent.com/Matuyuhi/upaa/main/install.sh | sh
 #
-# やること:
-#   1. GitHub の Releases から upaa-macos-arm64.zip と SHA256SUMS を取得する
-#   2. SHA-256 が一致したときだけ展開する
-#   3. ~/Applications/upaa.app に置き、~/.local/bin/upaa から呼べるようにする
-# 管理者権限は使わない。
+# What it does:
+#   1. Downloads upaa-macos-arm64.zip and SHA256SUMS from GitHub Releases
+#   2. Unpacks the zip only if its SHA-256 matches
+#   3. Puts the app in ~/Applications/upaa.app and links ~/.local/bin/upaa to it
+# No administrator rights are used.
 #
-# 環境変数:
-#   UPAA_VERSION        入れるバージョン（v0.1.0 の形）。省略すると最新
-#   UPAA_APP_DIR        .app を置く場所（既定 ~/Applications）
-#   UPAA_BIN_DIR        コマンドを置く場所（既定 ~/.local/bin）
-#   UPAA_DOWNLOAD_BASE  取得元（既定は GitHub の Releases。手元での確認用）
+# Environment variables:
+#   UPAA_VERSION        version to install, like v0.1.0 (default: latest)
+#   UPAA_APP_DIR        where to put the app (default: ~/Applications)
+#   UPAA_BIN_DIR        where to put the command (default: ~/.local/bin)
+#   UPAA_DOWNLOAD_BASE  where to download from (default: GitHub Releases; for local testing)
 set -eu
 
 REPO=Matuyuhi/upaa
@@ -25,10 +25,10 @@ fail() {
   exit 1
 }
 
-[ "$(uname -s)" = Darwin ] || fail "macOS 専用です"
-[ "$(uname -m)" = arm64 ] || fail "Apple Silicon（arm64）専用です"
+[ "$(uname -s)" = Darwin ] || fail "upaa only runs on macOS"
+[ "$(uname -m)" = arm64 ] || fail "upaa only runs on Apple Silicon (arm64)"
 major="$(sw_vers -productVersion | cut -d . -f 1)"
-[ "$major" -ge 13 ] || fail "macOS 13 以上が必要です（今は $(sw_vers -productVersion)）"
+[ "$major" -ge 13 ] || fail "macOS 13 or later is required (this is $(sw_vers -productVersion))"
 
 if [ -n "${UPAA_DOWNLOAD_BASE:-}" ]; then
   base="$UPAA_DOWNLOAD_BASE"
@@ -41,16 +41,16 @@ fi
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/upaa.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
-echo "取得: $base/$ZIP"
-curl -fsSL --proto '=https,file' -o "$tmp/$ZIP" "$base/$ZIP" || fail "ダウンロードに失敗しました"
-curl -fsSL --proto '=https,file' -o "$tmp/SHA256SUMS" "$base/SHA256SUMS" || fail "SHA256SUMS のダウンロードに失敗しました"
+echo "Downloading $base/$ZIP"
+curl -fsSL --proto '=https,file' -o "$tmp/$ZIP" "$base/$ZIP" || fail "download failed"
+curl -fsSL --proto '=https,file' -o "$tmp/SHA256SUMS" "$base/SHA256SUMS" || fail "could not download SHA256SUMS"
 
 expected="$(awk -v f="$ZIP" '{ n = $2; sub(/^\*/, "", n); if (n == f) print $1 }' "$tmp/SHA256SUMS")"
 actual="$(shasum -a 256 "$tmp/$ZIP" | cut -d ' ' -f 1)"
-[ -n "$expected" ] && [ "$expected" = "$actual" ] || fail "SHA-256 が一致しません: expected=${expected} actual=${actual}"
+[ -n "$expected" ] && [ "$expected" = "$actual" ] || fail "SHA-256 mismatch: expected=${expected} actual=${actual}"
 
 ditto -x -k "$tmp/$ZIP" "$tmp/unpacked"
-[ -x "$tmp/unpacked/upaa.app/Contents/MacOS/upaa" ] || fail "zip の中身が想定と違います"
+[ -x "$tmp/unpacked/upaa.app/Contents/MacOS/upaa" ] || fail "the zip does not contain upaa.app"
 version="$("$tmp/unpacked/upaa.app/Contents/MacOS/upaa" --version)"
 
 mkdir -p "$APP_DIR" "$BIN_DIR"
@@ -58,8 +58,8 @@ rm -rf "$APP_DIR/upaa.app"
 mv "$tmp/unpacked/upaa.app" "$APP_DIR/upaa.app"
 ln -sf "$APP_DIR/upaa.app/Contents/Resources/bin/upaa" "$BIN_DIR/upaa"
 
-echo "upaa $version を入れました: $APP_DIR/upaa.app"
+echo "Installed upaa $version at $APP_DIR/upaa.app"
 case ":$PATH:" in
-  *":$BIN_DIR:"*) echo "起動: upaa" ;;
-  *) echo "起動: $BIN_DIR/upaa（$BIN_DIR を PATH に入れると upaa だけで起動できます）" ;;
+  *":$BIN_DIR:"*) echo "Run: upaa" ;;
+  *) echo "Run: $BIN_DIR/upaa (add $BIN_DIR to your PATH to run it as just upaa)" ;;
 esac
