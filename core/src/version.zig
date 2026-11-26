@@ -1,4 +1,4 @@
-//! uparupa 自身のバージョン。値は build.zig.zon の .version から来る。
+//! upaa 自身のバージョン。値は build.zig.zon の .version から来る。
 const std = @import("std");
 const build_options = @import("build_options");
 

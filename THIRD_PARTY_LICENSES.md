@@ -1,6 +1,6 @@
 # 同梱している第三者のソフトウェア
 
-uparupa は libghostty-vt 1.0.2 を静的にリンクして配布している。libghostty-vt 自身と、その中にコンパイルされているライブラリは次のとおり。
+upaa は libghostty-vt 1.0.2 を静的にリンクして配布している。libghostty-vt 自身と、その中にコンパイルされているライブラリは次のとおり。
 一覧は、ghostty のタグ `vt-1.0.2` にある `deps/libghostty-vt-third-party.json` の「linked」の項目から取った。
 
 | 名前 | バージョン | ライセンス | 入手元 |

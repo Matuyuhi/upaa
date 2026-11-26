@@ -40,7 +40,7 @@ pub const Callbacks = extern struct {
     on_exit: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
 };
 
-/// キーを 1 回押した（離した）こと。Sources/CUparupaCore の UparupaKeyEvent と同じ並び。
+/// キーを 1 回押した（離した）こと。Sources/CUpaaCore の UpaaKeyEvent と同じ並び。
 pub const KeyEvent = extern struct {
     /// macOS の仮想キーコード。
     key_code: u16,
@@ -302,9 +302,9 @@ test "shell output reaches the terminal" {
     defer self.destroy();
 
     // 入力のエコーと区別できるよう、シェルに計算させた結果を待つ。
-    self.write("echo uparupa-$((40+2))\n");
+    self.write("echo upaa-$((40+2))\n");
     var out: [4096]u8 = undefined;
-    try self.waitForText("uparupa-42", &out);
+    try self.waitForText("upaa-42", &out);
     try std.testing.expect(self.takeDirty());
 }
 
@@ -342,12 +342,12 @@ test "intro is drawn before the shell output" {
     defer self.destroy();
     var out: [4096]u8 = undefined;
 
-    try self.waitForText("uparupa", &out);
+    try self.waitForText("upaa", &out);
     try std.testing.expect(std.mem.indexOf(u8, &out, "after-intro") == null);
     // 顔が消えてから、溜まっていたシェルの出力が出る。
     try self.waitForText("after-intro", &out);
     const n = self.plainText(&out).?;
-    try std.testing.expect(std.mem.indexOf(u8, out[0..n], "uparupa") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out[0..n], "upaa") == null);
 }
 
 test "intro note stays on the first line after the face is gone" {

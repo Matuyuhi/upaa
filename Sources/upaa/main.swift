@@ -1,0 +1,3 @@
+import UpaaKit
+
+UpaaApp.main()

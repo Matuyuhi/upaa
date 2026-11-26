@@ -1,8 +1,8 @@
-# uparupa
+# upaa
 
 macOS 専用のターミナルエミュレータ。UI と描画は Swift（AppKit、Metal）、中核は Zig で書き、端末エミュレーションは [libghostty-vt](https://lib.ghostty.org/vt/) に任せている。
 
-![uparupa の画面](tests/snapshots/styles.png)
+![upaa の画面](tests/snapshots/styles.png)
 
 ## 対応環境
 
@@ -20,22 +20,22 @@ macOS 専用のターミナルエミュレータ。UI と描画は Swift（AppKi
 ## インストール
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Matuyuhi/uparupa/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Matuyuhi/upaa/main/install.sh | sh
 ```
 
-- `~/Applications/uparupa.app` と `~/.local/bin/uparupa` が置かれる。管理者権限は使わない。
+- `~/Applications/upaa.app` と `~/.local/bin/upaa` が置かれる。管理者権限は使わない。
 - 取得したファイルは、SHA-256 を確かめてから展開する。
-- 入れるバージョンを指定するときは `UPARUPA_VERSION=v0.1.0` を付ける。
+- 入れるバージョンを指定するときは `UPAA_VERSION=v0.1.0` を付ける。
 
 ## 使い方
 
 ```sh
-uparupa            # 開く
-uparupa update     # 最新のリリースを入れ直す
-uparupa --version
+upaa            # 開く
+upaa update     # 最新のリリースを入れ直す
+upaa --version
 ```
 
-起動時に、新しいリリースが出ていないかを 1 日 1 回だけ GitHub に問い合わせる。知らせるだけで、自動では更新しない。止めるには環境変数 `UPARUPA_NO_UPDATE_CHECK=1` を設定する。
+起動時に、新しいリリースが出ていないかを 1 日 1 回だけ GitHub に問い合わせる。知らせるだけで、自動では更新しない。止めるには環境変数 `UPAA_NO_UPDATE_CHECK=1` を設定する。
 
 ## 開発
 
@@ -43,14 +43,14 @@ uparupa --version
 
 ```sh
 sh scripts/fetch-ghostty-vt.sh   # libghostty-vt を取得する（署名と SHA-256 を確かめる）
-sh scripts/build-app.sh          # build/uparupa.app を作る
+sh scripts/build-app.sh          # build/upaa.app を作る
 sh scripts/test.sh               # テスト一式
 ```
 
 | 場所 | 中身 |
 |---|---|
 | `core/src/` | Zig の中核（PTY、libghostty-vt の呼び出し、フォントとグリフ、描画用データの組み立て） |
-| `Sources/UparupaKit/` | Swift の UI、キー入力、Metal の描画 |
+| `Sources/UpaaKit/` | Swift の UI、キー入力、Metal の描画 |
 | `Shaders/` | Metal のシェーダ |
 | `tests/` | 画面の比較に使う入力と基準の画像 |
 

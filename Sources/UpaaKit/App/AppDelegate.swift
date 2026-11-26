@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let session = TerminalSession(
                   cols: UInt16(Defaults.cols), rows: UInt16(Defaults.rows), showIntro: automation == nil)
         else {
-            NSLog("uparupa: 端末を起動できない")
+            NSLog("upaa: 端末を起動できない")
             NSApp.terminate(nil)
             return
         }
@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "uparupa"
+        window.title = "upaa"
         // セル 1 つ分ずつ大きさが変わるようにする。
         window.contentResizeIncrements = NSSize(
             width: Double(renderer.cellSize.width) / scale, height: Double(renderer.cellSize.height) / scale)

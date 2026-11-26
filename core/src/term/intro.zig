@@ -51,10 +51,10 @@ pub fn frame(buf: []u8, cols: u16, rows: u16, index: usize, note: []const u8) []
     out.row(top + 3, left, gills.bot_l, "|    \\__/    |", gills.bot_r);
     out.row(top + 4, left, no_gill, "\\            /", no_gill);
     out.row(top + 5, left, no_gill, " '----------' ", no_gill);
-    const label_indent: u16 = (art_width - "uparupa".len) / 2;
+    const label_indent: u16 = (art_width - "upaa".len) / 2;
     out.move(top + 7, left + label_indent);
     out.put(label_color);
-    out.put("uparupa");
+    out.put("upaa");
     if (note.len > 0) {
         const width: u16 = @intCast(@min(note.len, cols));
         out.move(top + 9, if (cols > width) (cols - width) / 2 + 1 else 1);
@@ -132,7 +132,7 @@ test "frames fit the buffer and differ when the gills move" {
     const moved = frame(&b, 80, 24, 2, "");
     try std.testing.expect(first.len < a.len);
     try std.testing.expect(!std.mem.eql(u8, first, moved));
-    try std.testing.expect(std.mem.indexOf(u8, first, "uparupa") != null);
+    try std.testing.expect(std.mem.indexOf(u8, first, "upaa") != null);
     // 小さすぎる画面でも位置が 1 行 1 桁目より前に出ない。
     const tiny = frame(&b, 4, 2, 0, "");
     try std.testing.expect(std.mem.indexOf(u8, tiny, "\x1b[1;1H") != null);

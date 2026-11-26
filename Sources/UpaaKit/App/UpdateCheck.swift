@@ -1,12 +1,12 @@
-import CUparupaCore
+import CUpaaCore
 import Foundation
 
 /// 新しいバージョンが GitHub の Releases に出ていないかを調べる。知らせるだけで、更新はしない。
 ///
 /// GitHub に問い合わせるのは 1 日 1 回まで。それ以外は前回の結果を使う。
-/// 環境変数 UPARUPA_NO_UPDATE_CHECK を設定すると何もしない。
+/// 環境変数 UPAA_NO_UPDATE_CHECK を設定すると何もしない。
 enum UpdateCheck {
-    private static let latestReleaseURL = URL(string: "https://api.github.com/repos/Matuyuhi/uparupa/releases/latest")!
+    private static let latestReleaseURL = URL(string: "https://api.github.com/repos/Matuyuhi/upaa/releases/latest")!
     private static let interval: TimeInterval = 24 * 60 * 60
     private static let lastCheckedKey = "updateCheck.lastChecked"
     private static let latestTagKey = "updateCheck.latestTag"
@@ -14,7 +14,7 @@ enum UpdateCheck {
     /// 新しいバージョンがあれば、知らせる文を notify に渡す。notify はメインスレッドで呼ばれる。
     /// 起動時の顔を流している間に終わらなければ、結果は次回の起動で使われる。
     static func run(notify: @escaping (String) -> Void) {
-        guard ProcessInfo.processInfo.environment["UPARUPA_NO_UPDATE_CHECK"] == nil else { return }
+        guard ProcessInfo.processInfo.environment["UPAA_NO_UPDATE_CHECK"] == nil else { return }
         let defaults = UserDefaults.standard
 
         if let tag = defaults.string(forKey: latestTagKey), let message = message(for: tag) {
@@ -40,8 +40,8 @@ enum UpdateCheck {
     }
 
     private static func message(for tag: String) -> String? {
-        guard uparupa_version_is_newer(tag) else { return nil }
-        return "\(tag) is available (current \(String(cString: uparupa_version()))). Run: uparupa update"
+        guard upaa_version_is_newer(tag) else { return nil }
+        return "\(tag) is available (current \(String(cString: upaa_version()))). Run: upaa update"
     }
 
     private struct Release: Decodable {

@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 zig build test --summary all
 
 CONFIG=release sh scripts/build-app.sh
-BIN=build/uparupa.app/Contents/MacOS/uparupa
+BIN=build/upaa.app/Contents/MacOS/upaa
 "$BIN" --check
 
 mkdir -p build/snapshots tests/snapshots

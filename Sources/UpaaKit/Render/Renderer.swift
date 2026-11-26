@@ -1,4 +1,4 @@
-import CUparupaCore
+import CUpaaCore
 import Metal
 
 /// 端末の 1 フレームを Metal で描く。セルのデータは Zig が Metal のバッファに直接書く。
@@ -29,10 +29,10 @@ final class Renderer {
 
     /// fontSize はポイント、scale は画面の拡大率（Retina なら 2）。
     init(device: MTLDevice, fontName: String, fontSize: Double, scale: Double) throws {
-        guard let handle = uparupa_renderer_new(fontName, fontSize * scale) else { throw SetupError.font }
+        guard let handle = upaa_renderer_new(fontName, fontSize * scale) else { throw SetupError.font }
         self.handle = handle
         self.device = device
-        let metrics = uparupa_renderer_metrics(handle)
+        let metrics = upaa_renderer_metrics(handle)
         cellSize = (Int(metrics.cell_width), Int(metrics.cell_height))
         let points = Renderer.paddingPoints
         padding = (
@@ -43,7 +43,7 @@ final class Renderer {
         do {
             library = try device.makeDefaultLibrary(bundle: .main)
         } catch {
-            uparupa_renderer_free(handle)
+            upaa_renderer_free(handle)
             throw SetupError.metal("default.metallib を読めない: \(error)")
         }
 
@@ -63,7 +63,7 @@ final class Renderer {
             return try device.makeRenderPipelineState(descriptor: descriptor)
         }
 
-        let atlasSize = Int(uparupa_renderer_atlas_size())
+        let atlasSize = Int(upaa_renderer_atlas_size())
         let atlasDescriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .r8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
         do {
@@ -74,13 +74,13 @@ final class Renderer {
             }
             atlasTexture = texture
         } catch {
-            uparupa_renderer_free(handle)
+            upaa_renderer_free(handle)
             throw error
         }
     }
 
     deinit {
-        uparupa_renderer_free(handle)
+        upaa_renderer_free(handle)
     }
 
     /// 大きさ size（ピクセル）の描画先に入る桁数と行数。
@@ -105,14 +105,14 @@ final class Renderer {
     ) {
         // 端からはみ出す分も含めて、描画先に入りうるセルの数だけ場所を用意する。
         let capacity = (viewport.width / cellSize.width + 1) * (viewport.height / cellSize.height + 1)
-        let stride = MemoryLayout<UparupaCell>.stride
+        let stride = MemoryLayout<UpaaCell>.stride
         if cellBuffer == nil || cellBuffer!.length < capacity * stride {
             cellBuffer = device.makeBuffer(length: capacity * stride, options: .storageModeShared)
         }
         guard let cellBuffer else { return }
 
-        let cells = cellBuffer.contents().bindMemory(to: UparupaCell.self, capacity: capacity)
-        let frame = uparupa_renderer_frame(handle, session.handle, cells, capacity)
+        let cells = cellBuffer.contents().bindMemory(to: UpaaCell.self, capacity: capacity)
+        let frame = upaa_renderer_frame(handle, session.handle, cells, capacity)
         uploadAtlasIfNeeded(generation: frame.atlas_generation)
 
         let bg = frame.background
@@ -146,7 +146,7 @@ final class Renderer {
         atlasTexture.replace(
             region: MTLRegionMake2D(0, 0, size, size),
             mipmapLevel: 0,
-            withBytes: uparupa_renderer_atlas_pixels(handle),
+            withBytes: upaa_renderer_atlas_pixels(handle),
             bytesPerRow: size)
     }
 

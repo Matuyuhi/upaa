@@ -40,20 +40,20 @@ jobs:
 
       - name: タグとバージョンが合っているか確かめる
         run: |
-          version="$(build/uparupa.app/Contents/MacOS/uparupa --version)"
+          version="$(build/upaa.app/Contents/MacOS/upaa --version)"
           [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "タグ $GITHUB_REF_NAME と build.zig.zon のバージョン $version が違う"; exit 1; }
 
       - name: 配るファイルを作る
         run: |
           mkdir -p dist
-          ditto -c -k --keepParent build/uparupa.app dist/uparupa-macos-arm64.zip
-          cd dist && shasum -a 256 uparupa-macos-arm64.zip > SHA256SUMS && cat SHA256SUMS
+          ditto -c -k --keepParent build/upaa.app dist/upaa-macos-arm64.zip
+          cd dist && shasum -a 256 upaa-macos-arm64.zip > SHA256SUMS && cat SHA256SUMS
 
       - uses: actions/attest-build-provenance@v4.2.2
         with:
-          subject-path: dist/uparupa-macos-arm64.zip
+          subject-path: dist/upaa-macos-arm64.zip
 
       - name: Release を作る
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/uparupa-macos-arm64.zip dist/SHA256SUMS --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" dist/upaa-macos-arm64.zip dist/SHA256SUMS --generate-notes --verify-tag

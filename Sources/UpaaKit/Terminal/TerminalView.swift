@@ -1,5 +1,5 @@
 import AppKit
-import CUparupaCore
+import CUpaaCore
 import MetalKit
 
 /// 端末 1 つを表示し、キー入力を受け取るビュー。画面が変わったときだけ描き直す。
@@ -115,10 +115,10 @@ final class TerminalView: MTKView, MTKViewDelegate {
 
     private static func mods(_ flags: NSEvent.ModifierFlags) -> UInt8 {
         var mods = 0
-        if flags.contains(.shift) { mods |= UPARUPA_MOD_SHIFT }
-        if flags.contains(.control) { mods |= UPARUPA_MOD_CTRL }
-        if flags.contains(.option) { mods |= UPARUPA_MOD_ALT }
-        if flags.contains(.command) { mods |= UPARUPA_MOD_SUPER }
+        if flags.contains(.shift) { mods |= UPAA_MOD_SHIFT }
+        if flags.contains(.control) { mods |= UPAA_MOD_CTRL }
+        if flags.contains(.option) { mods |= UPAA_MOD_ALT }
+        if flags.contains(.command) { mods |= UPAA_MOD_SUPER }
         return UInt8(mods)
     }
 

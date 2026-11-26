@@ -1,7 +1,7 @@
 import AppKit
-import CUparupaCore
+import CUpaaCore
 
-/// アプリの入口。実行ファイル（Sources/uparupa/main.swift）からこれだけを呼ぶ。
+/// アプリの入口。実行ファイル（Sources/upaa/main.swift）からこれだけを呼ぶ。
 ///
 /// 引数:
 ///   --version                            バージョンを出力し、終了する
@@ -16,12 +16,12 @@ import CUparupaCore
 ///   --type <文字列>                       ウィンドウを開いて文字列をキー入力として流し、画面の文字を出力して終了する
 ///   --bench-cat <ファイル>                ウィンドウを開いてファイルを cat し、かかった時間を出力して終了する
 ///   --bench-keys                         ウィンドウを開いて 1 文字ずつ打ち、キーから表示までの時間を出力して終了する
-public enum UparupaApp {
+public enum UpaaApp {
     public static func main() -> Never {
         let arguments = CommandLine.arguments
 
         if arguments.contains("--version") {
-            print(String(cString: uparupa_version()))
+            print(String(cString: upaa_version()))
             exit(0)
         }
 
@@ -33,7 +33,7 @@ public enum UparupaApp {
 
         if let index = value(after: "--intro-vt", in: arguments).flatMap(Int.init) {
             var buffer = [UInt8](repeating: 0, count: 2048)
-            let length = uparupa_intro_frame(UInt16(Defaults.cols), UInt16(Defaults.rows), index, &buffer, buffer.count)
+            let length = upaa_intro_frame(UInt16(Defaults.cols), UInt16(Defaults.rows), index, &buffer, buffer.count)
             FileHandle.standardOutput.write(Data(buffer.prefix(length)))
             exit(0)
         }
@@ -63,7 +63,7 @@ public enum UparupaApp {
                 exit(result.megabytesPerSecond >= minSpeed && result.frameMilliseconds <= maxFrame ? 0 : 1)
             }
         } catch {
-            FileHandle.standardError.write(Data("uparupa: \(error)\n".utf8))
+            FileHandle.standardError.write(Data("upaa: \(error)\n".utf8))
             exit(1)
         }
 
@@ -93,7 +93,7 @@ public enum UparupaApp {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
         appItem.submenu = NSMenu()
-        appItem.submenu?.addItem(withTitle: "Quit uparupa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu?.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         mainMenu.addItem(appItem)
         return mainMenu
     }

@@ -1,7 +1,7 @@
 .{
-    .name = .uparupa,
+    .name = .upaa,
     .version = "0.1.0",
-    .fingerprint = 0xaca995a58032441,
+    .fingerprint = 0x6f07ecca554367b4,
     .minimum_zig_version = "0.17.0",
     .paths = .{
         "build.zig",

@@ -57,8 +57,8 @@ enum Snapshot {
 
         // 入力のエコーと区別できるよう、終わりの目印はシェルに計算させる。
         let start = Date()
-        offscreen.session.write("cat '\(file)'; echo uparupa-done-$((40+2))\n")
-        while !offscreen.session.plainText().contains("uparupa-done-42") {
+        offscreen.session.write("cat '\(file)'; echo upaa-done-$((40+2))\n")
+        while !offscreen.session.plainText().contains("upaa-done-42") {
             if Date().timeIntervalSince(start) > 120 { throw Failure.message("cat が 120 秒で終わらない") }
             usleep(2_000)
         }
