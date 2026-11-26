@@ -54,7 +54,7 @@ sh scripts/test.sh               # テスト一式
 | `Shaders/` | Metal のシェーダ |
 | `tests/` | 画面の比較に使う入力と基準の画像 |
 
-バージョンは `build.zig.zon` の `.version` だけに書く。リリースは、同じ番号のタグ（`v0.1.0` の形）を push すると GitHub Actions が作る。
+バージョンは `build.zig.zon` の `.version` だけに書く。リリースは、番号を上げて `main` に入れたあと、GitHub Actions の `release` を手で実行すると、タグと Release が作られる。
 
 細かい決まりごとは `CLAUDE.md`、経緯と確認済みの事実は `docs/handoff.md` にある。
 

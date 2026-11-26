@@ -1,22 +1,25 @@
 name: release
 
-# v0.1.0 のようなタグを push すると、テストを通したうえでビルドして GitHub の Releases に置く。
-# バージョンは build.zig.zon の .version に書き、同じ番号のタグを打つ。
+# 手で実行する（Actions の画面の「Run workflow」か、gh workflow run release.yml）。
+# build.zig.zon の .version を読み、テストを通してからビルドして、v<番号> のタグと Release を作る。
+# 同じ番号のタグがすでにあれば失敗する。出すときは、先に build.zig.zon の番号を上げて main に入れておく。
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   release:
+    # main 以外からは出さない。
+    if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      GH_TOKEN: ${{ github.token }}
     timeout-minutes: 30
     permissions:
-      # Release を作る
+      # タグと Release を作る
       contents: write
       # ビルドの出どころの証明（attestation）を付ける
       id-token: write
@@ -24,6 +27,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
+      - name: 出すバージョンを決める
+        id: version
+        run: |
+          version="$(sed -n 's/.*\.version = "\([^"]*\)".*/\1/p' build.zig.zon)"
+          [ -n "$version" ] || { echo "build.zig.zon からバージョンを読めない"; exit 1; }
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "v$version はすでに出ている。build.zig.zon の番号を上げる"; exit 1
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # 配るものは毎回まっさらな状態から作る。テスト用のワークフローのキャッシュは使わない。
       - name: Zig と minisign を入れる
         run: |
           brew install zig minisign
@@ -38,10 +53,10 @@ jobs:
       - name: テスト（release ビルドもここで作る）
         run: sh scripts/test.sh
 
-      - name: タグとバージョンが合っているか確かめる
+      - name: ビルドしたもののバージョンを確かめる
         run: |
-          version="$(build/upaa.app/Contents/MacOS/upaa --version)"
-          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "タグ $GITHUB_REF_NAME と build.zig.zon のバージョン $version が違う"; exit 1; }
+          built="$(build/upaa.app/Contents/MacOS/upaa --version)"
+          [ "$built" = "${{ steps.version.outputs.version }}" ] || { echo "ビルドしたものは $built で、build.zig.zon の ${{ steps.version.outputs.version }} と違う"; exit 1; }
 
       - name: 配るファイルを作る
         run: |
@@ -53,7 +68,8 @@ jobs:
         with:
           subject-path: dist/upaa-macos-arm64.zip
 
-      - name: Release を作る
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/upaa-macos-arm64.zip dist/SHA256SUMS --generate-notes --verify-tag
+      # タグは、このワークフローが動いている commit に付く。
+      - name: タグと Release を作る
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" dist/upaa-macos-arm64.zip dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes

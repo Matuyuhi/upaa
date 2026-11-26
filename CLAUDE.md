@@ -28,7 +28,7 @@ macOS 専用の自作ターミナルエミュレータ。Swift（AppKit）と Zi
 ## バージョンとリリース
 
 - バージョンは `build.zig.zon` の `.version` だけに書く。Zig のコード、Swift（`upaa --version`、更新確認）、`.app` の `Info.plist` はここから取る。ほかの場所に番号を書かない。
-- リリースは、`build.zig.zon` の番号を上げて commit し、同じ番号のタグ（`v0.1.0` の形）を push する。`.github/workflows/release.yml` がテストを通してから zip と `SHA256SUMS` を GitHub の Releases に置く。タグと番号が違えば失敗する。
+- リリースは、`build.zig.zon` の番号を上げて `main` に入れてから、`.github/workflows/release.yml` を手で実行する（`gh workflow run release.yml`）。テストを通してから、`v<番号>` のタグと Release（zip と `SHA256SUMS`）を作る。タグは手で打たない。同じ番号がすでに出ていれば失敗する。
 - インストールは `install.sh`（`curl ... | sh`）。`~/Applications/upaa.app` と `~/.local/bin/upaa` を置く。`upaa` コマンドの中身は `scripts/upaa-launcher.sh`。
 - 起動時の更新確認は `Sources/UpaaKit/App/UpdateCheck.swift`。1 日 1 回だけ GitHub に問い合わせ、知らせるだけで更新はしない。
 

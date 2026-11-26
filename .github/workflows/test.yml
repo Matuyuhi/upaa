@@ -34,9 +34,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - name: Zig と minisign を入れる
+      # 取得スクリプト（バージョンと SHA-256 を固定している）が変わらない限り、取得し直さない。
+      - name: libghostty-vt のキャッシュ
+        id: ghostty-vt
+        uses: actions/cache@v6.1.0
+        with:
+          path: vendor/ghostty-vt
+          key: ghostty-vt-${{ hashFiles('scripts/fetch-ghostty-vt.sh') }}
+
+      # Zig と SwiftPM の途中の生成物。ソースが変わった分だけ作り直される。
+      - name: ビルドのキャッシュ
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/.cache/zig
+            .zig-cache
+            .build
+          key: build-${{ runner.os }}-${{ hashFiles('build.zig', 'build.zig.zon', 'Package.swift', 'core/**', 'Sources/**') }}
+          restore-keys: build-${{ runner.os }}-
+
+      - name: Zig を入れる
         run: |
-          brew install zig minisign
+          brew install zig
           # libghostty-vt 1.0.x と build.zig は Zig 0.17.x が前提。
           zig version | grep -q '^0\.17\.' || { echo "Zig 0.17.x が必要: $(zig version)"; exit 1; }
 
@@ -44,7 +63,10 @@ jobs:
         run: xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
 
       - name: libghostty-vt を取得する
-        run: sh scripts/fetch-ghostty-vt.sh
+        if: steps.ghostty-vt.outputs.cache-hit != 'true'
+        run: |
+          brew install minisign
+          sh scripts/fetch-ghostty-vt.sh
 
       - name: テスト
         run: sh scripts/test.sh
