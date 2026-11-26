@@ -2,7 +2,7 @@ name: release
 
 # Run by hand (the "Run workflow" button in Actions, or gh workflow run release.yml).
 # Reads .version from build.zig.zon, runs the tests, builds, then creates the v<version> tag and Release.
-# Fails if a tag with the same version already exists. To release, first bump the version in build.zig.zon and merge it into main.
+# Fails if a tag with the same version already exists. After the release, bump-version.yml moves main to the next patch version.
 on:
   workflow_dispatch:
 
@@ -73,3 +73,12 @@ jobs:
         run: |
           gh release create "${{ steps.version.outputs.tag }}" dist/upaa-macos-arm64.zip dist/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes
+
+  # Move main to the next patch version, so the next release does not collide with this one.
+  bump-version:
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/bump-version.yml
+    with:
+      part: patch

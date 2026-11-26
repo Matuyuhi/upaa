@@ -38,7 +38,7 @@ Do not proceed by just piling on code. Avoid increasing the amount of code itsel
 ## Version and release
 
 - The version is written only in `.version` of `build.zig.zon`. Zig code, Swift (`upaa --version`, update check), and the `.app`'s `Info.plist` take it from there. Do not write the number anywhere else.
-- For a release, raise the number in `build.zig.zon` and merge it into `main`. Then run `.github/workflows/release.yml` by hand (`gh workflow run release.yml`). After the tests pass, it creates the `v<number>` tag and the Release (zip and `SHA256SUMS`). Do not type the tag by hand. If the same number has already been released, it fails.
+- For a release, run `.github/workflows/release.yml` by hand (`gh workflow run release.yml`). It reads the number from `build.zig.zon`, runs the tests, and creates the `v<number>` tag and the Release (zip and `SHA256SUMS`). Do not type the tag by hand. After the release it calls `.github/workflows/bump-version.yml`, which moves `main` to the next patch version. For a new minor or major version, run `gh workflow run bump-version.yml -f part=minor` (or `major`) before releasing.
 - Install is via `install.sh` (`curl ... | sh`). It places `~/Applications/upaa.app` and `~/.local/bin/upaa`. The contents of the `upaa` command come from `scripts/upaa-launcher.sh`.
 - The update check at startup is `Sources/UpaaKit/App/UpdateCheck.swift`. It queries GitHub once a day. It only notifies; it does not update.
 
