@@ -242,7 +242,7 @@ fn feed(self: *Session, bytes: []const u8) void {
 /// Draws the startup face one frame at a time. Shell output in the meantime accumulates in the PTY and is read after it finishes.
 /// Returns false if told to stop partway through.
 fn playIntro(self: *Session) bool {
-    var buf: [1024]u8 = undefined;
+    var buf: [4096]u8 = undefined;
     var note_buf: [160]u8 = undefined;
     var stop = [_]c.struct_pollfd{.{ .fd = self.stop_pipe[0], .events = c.POLLIN, .revents = 0 }};
     for (0..intro.frame_count) |index| {
