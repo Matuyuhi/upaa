@@ -12,11 +12,12 @@ case "$CONFIG" in
 esac
 
 zig build -Doptimize="$ZIG_OPT"
-# SwiftPM's link records the SDK version as 13.0, the same as the minimum OS.
-# AppKit switches its behavior based on this value, so pass the actual SDK version.
-SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+# The Swift driver gives clang the SDK as --sysroot, but clang reads the SDK version only from -isysroot or
+# SDKROOT. xcrun sets SDKROOT; SwiftPM runs the toolchain directly without it, so the executable would record
+# the SDK version as the minimum OS (13.0). AppKit changes behavior based on that value, so pass -isysroot.
+SDK="$(xcrun --sdk macosx --show-sdk-path)"
 set -- -c "$CONFIG" --arch arm64 \
-  -Xlinker -platform_version -Xlinker macos -Xlinker 13.0 -Xlinker "$SDK_VERSION"
+  -Xswiftc -Xclang-linker -Xswiftc -isysroot -Xswiftc -Xclang-linker -Xswiftc "$SDK"
 swift build "$@"
 BIN_DIR="$(swift build "$@" --show-bin-path)"
 

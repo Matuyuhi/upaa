@@ -89,7 +89,7 @@ Sources are the official release notes.
 - When the target is specified as `aarch64-macos.13.0`, Zig does not search for the SDK automatically, and frameworks are not found. Passing the result of `xcrun --sdk macosx --show-sdk-path` as a search path in `build.zig` was enough. A mechanism equivalent to Ghostty's `apple_sdk` is not needed for now.
 - From Zig, CoreText was called and Menlo's 'A' (glyph 36) was obtained. Through fallback, HiraginoSans-W3's U+3042 (hiragana a) was obtained (glyph 843). Checked on macOS 27.2.1 by directly launching the executable inside `.app`.
 - `swift build` internally uses `sandbox-exec`, so it does not run inside the Claude Code sandbox. It was run outside the sandbox.
-- Not yet understood: the `LC_BUILD_VERSION` of the final executable becomes `minos 13.0 / sdk 13.0`. An executable linked directly by Zig had `sdk 27.0`. AppKit changes its behavior based on the SDK version at link time, so this must be checked before M1.
+- The `LC_BUILD_VERSION` of the final executable was `minos 13.0 / sdk 13.0` (AppKit changes its behavior based on the SDK version at link time). Cause, found 2026-11-26: the Swift driver gives clang the SDK as `--sysroot`, but clang reads the SDK version only from `-isysroot` or the `SDKROOT` environment variable. `xcrun swiftc` sets `SDKROOT`; SwiftPM runs the toolchain's `swiftc` directly without it, so clang falls back to the deployment target. Running the toolchain `swiftc` by full path reproduces it outside SwiftPM. `scripts/build-app.sh` now passes `-Xclang-linker -isysroot <SDK>`, which gives `minos 13.0 / sdk 27.2`.
 
 ### M1 measurements (2026-11-26)
 
