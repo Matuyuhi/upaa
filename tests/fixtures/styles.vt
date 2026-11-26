@@ -4,7 +4,7 @@ plain [4munderline[0m [1mbold[0m [7minverse[0m [8mhidden[0m|visible
 [90m fg90[0m[91m fg91[0m[92m fg92[0m[93m fg93[0m[94m fg94[0m[95m fg95[0m[96m fg96[0m[97m fg97[0m
 [40m bg40 [0m[41m bg41 [0m[42m bg42 [0m[43m bg43 [0m[44m bg44 [0m[45m bg45 [0m[46m bg46 [0m[47m bg47 [0m
 [48;5;238m bg256 [0m [38;5;208mfg256[0m [38;2;255;128;0mtruecolor[0m [48;2;0;64;128m truebg [0m
-日本語あいう ABC 全角ＡＢＣ｜half ｶﾀｶﾅ
+日本語あいう ABC 全角ＡＢＣ｜half ｶﾀｶﾅ がぎ é
 ┌──────┬──────┐
 │ box  │ draw │
 └──────┴──────┘

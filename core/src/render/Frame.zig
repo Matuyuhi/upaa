@@ -109,7 +109,9 @@ fn overlayPreedit(line: []Cell, start: u16, preedit: []const u8, face: Face, atl
         // Zero-width combining characters cannot be drawn yet, so skip them.
         if (width == 0) continue;
         if (col + width > line.len) break;
-        line[col].glyph = atlas.get(face, codepoint);
+        var utf8: [4]u8 = undefined;
+        const n = std.unicode.utf8Encode(codepoint, &utf8) catch continue;
+        line[col].glyph = atlas.get(face, utf8[0..n]);
         for (line[col..][0..width], 0..) |*cell, i| {
             if (i > 0) cell.glyph = .{};
             cell.fg = fg;
@@ -149,14 +151,11 @@ fn readCell(frame: *Frame, face: Face, atlas: *Atlas, default_fg: [4]u8, default
         }
     }
 
-    // Combining characters (dakuten composition, emoji joining) are not drawn yet. Only the first codepoint is used.
-    var codepoint: u32 = 0;
-    var graphemes: vt.GhosttyCodepointBuffer = .{ .ptr = &codepoint, .cap = 1, .len = 0 };
-    _ = vt.ghostty_render_state_row_cells_get(cells, vt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, &graphemes);
-    const glyph: Atlas.Glyph = if (graphemes.len > 0 and codepoint <= 0x10FFFF)
-        atlas.get(face, @intCast(codepoint))
-    else
-        .{};
+    // The whole grapheme cluster, so combining marks are drawn with their base. A cluster longer than the buffer is not drawn.
+    var text: [64]u8 = undefined;
+    var buf: vt.GhosttyBuffer = .{ .ptr = &text, .cap = text.len, .len = 0 };
+    const read = vt.ghostty_render_state_row_cells_get(cells, vt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_UTF8, &buf);
+    const glyph: Atlas.Glyph = if (read == vt.GHOSTTY_SUCCESS and buf.len > 0) atlas.get(face, text[0..buf.len]) else .{};
 
     return .{ .col = 0, .row = 0, .glyph = glyph, .fg = fg, .bg = bg, .flags = flags };
 }

@@ -54,41 +54,6 @@ pub fn deinit(face: Face) void {
     c.CFRelease(face.font);
 }
 
-pub const Resolved = struct {
-    /// The caller calls CFRelease.
-    font: c.CTFontRef,
-    glyph: c.CGGlyph,
-};
-
-/// Returns a font that can draw the codepoint, and its glyph. Characters this font lacks are left to CoreText fallback.
-pub fn resolve(face: Face, codepoint: u21) ?Resolved {
-    var units: [2]c.UniChar = undefined;
-    const n: c.CFIndex = if (codepoint < 0x10000) blk: {
-        units[0] = @intCast(codepoint);
-        break :blk 1;
-    } else blk: {
-        const v = codepoint - 0x10000;
-        units[0] = @intCast(0xD800 + (v >> 10));
-        units[1] = @intCast(0xDC00 + (v & 0x3FF));
-        break :blk 2;
-    };
-
-    var glyphs = [2]c.CGGlyph{ 0, 0 };
-    if (c.CTFontGetGlyphsForCharacters(face.font, &units, &glyphs, n)) {
-        _ = c.CFRetain(face.font);
-        return .{ .font = face.font, .glyph = glyphs[0] };
-    }
-
-    const str = c.CFStringCreateWithCharacters(null, &units, n) orelse return null;
-    defer c.CFRelease(str);
-    const fallback = c.CTFontCreateForString(face.font, str, .{ .location = 0, .length = n }) orelse return null;
-    if (!c.CTFontGetGlyphsForCharacters(fallback, &units, &glyphs, n)) {
-        c.CFRelease(fallback);
-        return null;
-    }
-    return .{ .font = fallback, .glyph = glyphs[0] };
-}
-
 test "Menlo metrics" {
     const face = try Face.init("Menlo", 26);
     defer face.deinit();
@@ -96,16 +61,4 @@ test "Menlo metrics" {
     try std.testing.expect(face.metrics.cell_height > face.metrics.baseline);
     try std.testing.expect(face.metrics.underline_offset > face.metrics.baseline);
     try std.testing.expect(face.metrics.underline_offset + face.metrics.underline_thickness <= face.metrics.cell_height);
-}
-
-test "resolve falls back for Japanese" {
-    const face = try Face.init("Menlo", 26);
-    defer face.deinit();
-    const latin = face.resolve('A').?;
-    defer c.CFRelease(latin.font);
-    try std.testing.expect(latin.font == face.font);
-    const kana = face.resolve(0x3042).?;
-    defer c.CFRelease(kana.font);
-    try std.testing.expect(kana.font != face.font);
-    try std.testing.expect(kana.glyph != 0);
 }

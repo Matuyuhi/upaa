@@ -11,7 +11,8 @@ pub const size = 2048;
 
 /// size x size. Rows run from top to bottom.
 pixels: []u8,
-glyphs: std.AutoHashMapUnmanaged(u21, Glyph) = .empty,
+/// Keyed by the cell's text (one grapheme cluster, UTF-8). The keys are owned by the atlas.
+glyphs: std.StringHashMapUnmanaged(Glyph) = .empty,
 /// Where the next glyph goes (placed left to right on a shelf; moves to the next shelf when full).
 cursor_x: u32 = 1,
 cursor_y: u32 = 1,
@@ -37,25 +38,36 @@ pub fn init() error{OutOfMemory}!Atlas {
 }
 
 pub fn deinit(atlas: *Atlas) void {
+    var keys = atlas.glyphs.keyIterator();
+    while (keys.next()) |key| alloc.free(key.*);
     atlas.glyphs.deinit(alloc);
     alloc.free(atlas.pixels);
 }
 
-/// New characters are drawn here on first use. Characters that cannot be drawn, or when the atlas is full, return an empty glyph.
-pub fn get(atlas: *Atlas, face: Face, codepoint: u21) Glyph {
-    if (atlas.glyphs.get(codepoint)) |glyph| return glyph;
-    const glyph = atlas.rasterize(face, codepoint) orelse Glyph{};
-    atlas.glyphs.put(alloc, codepoint, glyph) catch {};
+/// text is one cell's grapheme cluster (UTF-8). New text is drawn here on first use.
+/// Text that cannot be drawn, or anything after the atlas is full, gets an empty glyph.
+pub fn get(atlas: *Atlas, face: Face, text: []const u8) Glyph {
+    if (atlas.glyphs.get(text)) |glyph| return glyph;
+    const glyph = atlas.rasterize(face, text) orelse Glyph{};
+    const key = alloc.dupe(u8, text) catch return glyph;
+    atlas.glyphs.put(alloc, key, glyph) catch alloc.free(key);
     return glyph;
 }
 
-fn rasterize(atlas: *Atlas, face: Face, codepoint: u21) ?Glyph {
-    const resolved = face.resolve(codepoint) orelse return null;
-    defer c.CFRelease(resolved.font);
+/// Draws text with a CTLine, so CoreText composes combining marks and picks a fallback font for characters the face lacks.
+fn rasterize(atlas: *Atlas, face: Face, text: []const u8) ?Glyph {
+    const str = c.CFStringCreateWithBytes(null, text.ptr, @intCast(text.len), c.kCFStringEncodingUTF8, 0) orelse return null;
+    defer c.CFRelease(str);
+    var keys = [_]?*const anyopaque{c.kCTFontAttributeName};
+    var values = [_]?*const anyopaque{face.font};
+    const attrs = c.CFDictionaryCreate(null, &keys, &values, 1, &c.kCFTypeDictionaryKeyCallBacks, &c.kCFTypeDictionaryValueCallBacks) orelse return null;
+    defer c.CFRelease(attrs);
+    const attributed = c.CFAttributedStringCreate(null, str, attrs) orelse return null;
+    defer c.CFRelease(attributed);
+    const line = c.CTLineCreateWithAttributedString(attributed) orelse return null;
+    defer c.CFRelease(line);
 
-    var glyphs = [_]c.CGGlyph{resolved.glyph};
-    var rect: c.CGRect = undefined;
-    _ = c.CTFontGetBoundingRectsForGlyphs(resolved.font, c.kCTFontOrientationHorizontal, &glyphs, &rect, 1);
+    const rect = c.CTLineGetBoundsWithOptions(line, c.kCTLineBoundsUseGlyphPathBounds);
     if (rect.size.width <= 0 or rect.size.height <= 0) return Glyph{};
 
     // Pixel range enclosing the glyph, in baseline-origin upward coordinates. Expand by 1 on each side for the antialiasing bleed.
@@ -81,8 +93,8 @@ fn rasterize(atlas: *Atlas, face: Face, codepoint: u21) ?Glyph {
     defer c.CGContextRelease(ctx);
     c.CGContextSetShouldAntialias(ctx, true);
     c.CGContextSetShouldSmoothFonts(ctx, false);
-    var point = c.CGPoint{ .x = @floatFromInt(-x0), .y = @floatFromInt(-y0) };
-    c.CTFontDrawGlyphs(resolved.font, &glyphs, &point, 1, ctx);
+    c.CGContextSetTextPosition(ctx, @floatFromInt(-x0), @floatFromInt(-y0));
+    c.CTLineDraw(line, ctx);
 
     atlas.generation += 1;
     return .{
@@ -125,17 +137,23 @@ test "glyphs are drawn once and cached" {
     var atlas = try Atlas.init();
     defer atlas.deinit();
 
-    const a = atlas.get(face, 'A');
+    const a = atlas.get(face, "A");
     try std.testing.expect(a.width > 0 and a.height > 0);
     try std.testing.expect(atlas.inkSum(a) > 0);
     const generation = atlas.generation;
-    try std.testing.expectEqual(a, atlas.get(face, 'A'));
+    try std.testing.expectEqual(a, atlas.get(face, "A"));
     try std.testing.expectEqual(generation, atlas.generation);
 
-    const kana = atlas.get(face, 0x3042);
+    // Menlo has no kana, so this also checks the fallback font. Full-width characters are wider than one cell.
+    const kana = atlas.get(face, "\u{3042}");
     try std.testing.expect(atlas.inkSum(kana) > 0);
-    // Full-width characters are wider than one cell.
     try std.testing.expect(kana.width > face.metrics.cell_width);
 
-    try std.testing.expectEqual(@as(u16, 0), atlas.get(face, ' ').width);
+    // A decomposed dakuten (ka + U+3099, as in macOS file names) is drawn as one glyph with more ink than ka alone.
+    const ka = atlas.get(face, "\u{304B}");
+    const ga = atlas.get(face, "\u{304B}\u{3099}");
+    try std.testing.expect(atlas.inkSum(ga) > atlas.inkSum(ka));
+    try std.testing.expect(ga.width < 2 * face.metrics.cell_width + 4);
+
+    try std.testing.expectEqual(@as(u16, 0), atlas.get(face, " ").width);
 }

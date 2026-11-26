@@ -8,6 +8,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
     private let renderer: Renderer
     private let commandQueue: MTLCommandQueue
     private var gridSize: (cols: Int, rows: Int) = (0, 0)
+    /// The cursor cell from the last frame. The IME candidate window is placed below it.
+    private var cursor: (col: Int, row: Int)?
 
     /// Text being composed with IME. Passed to Zig when drawing and overlaid with an underline at the cursor position.
     private var markedText = NSMutableAttributedString()
@@ -51,7 +53,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
               let drawable = currentDrawable,
               let commandBuffer = commandQueue.makeCommandBuffer()
         else { return }
-        renderer.draw(
+        cursor = renderer.draw(
             session: session, preedit: markedText.string, commandBuffer: commandBuffer, pass: pass,
             viewport: (Int(drawableSize.width), Int(drawableSize.height)))
         commandBuffer.present(drawable)
@@ -161,10 +163,17 @@ extension TerminalView: NSTextInputClient {
         []
     }
 
-    /// Position of the candidate window. Aligning it with the cursor is done together with the in-composition display.
+    /// Screen rect of the cursor cell (where composition starts). The input method shows its candidate window below it.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        guard let window else { return .zero }
-        return window.convertToScreen(convert(NSRect(x: 0, y: 0, width: 0, height: 0), to: nil))
+        guard let window, let cursor else { return .zero }
+        // Renderer works in drawable pixels from the top-left; the view is in points from the bottom-left.
+        let scale = drawableSize.width / max(bounds.width, 1)
+        let cell = renderer.cellSize
+        let x = CGFloat(renderer.padding.horizontal + cursor.col * cell.width) / scale
+        let top = CGFloat(renderer.padding.top + cursor.row * cell.height) / scale
+        let height = CGFloat(cell.height) / scale
+        let rect = NSRect(x: x, y: bounds.height - top - height, width: CGFloat(cell.width) / scale, height: height)
+        return window.convertToScreen(convert(rect, to: nil))
     }
 
     func characterIndex(for point: NSPoint) -> Int {

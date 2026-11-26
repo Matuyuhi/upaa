@@ -100,20 +100,22 @@ final class Renderer {
 
     /// Draws the session's current screen into the pass's drawing target. viewport is the size of the drawing target (pixels).
     /// preedit is the text being composed with IME (empty if none).
+    /// Returns the cursor cell (nil if the cursor is hidden or nothing was drawn).
+    @discardableResult
     func draw(
         session: TerminalSession,
         preedit: String = "",
         commandBuffer: MTLCommandBuffer,
         pass: MTLRenderPassDescriptor,
         viewport: (width: Int, height: Int)
-    ) {
+    ) -> (col: Int, row: Int)? {
         // Allocate room for every cell that could fit in the drawing target, including cells that extend past the edges.
         let capacity = (viewport.width / cellSize.width + 1) * (viewport.height / cellSize.height + 1)
         let stride = MemoryLayout<UpaaCell>.stride
         if cellBuffer == nil || cellBuffer!.length < capacity * stride {
             cellBuffer = device.makeBuffer(length: capacity * stride, options: .storageModeShared)
         }
-        guard let cellBuffer else { return }
+        guard let cellBuffer else { return nil }
 
         let cells = cellBuffer.contents().bindMemory(to: UpaaCell.self, capacity: capacity)
         let preeditBytes = Array(preedit.utf8)
@@ -124,9 +126,10 @@ final class Renderer {
         pass.colorAttachments[0].clearColor = MTLClearColor(
             red: Double(bg.0) / 255, green: Double(bg.1) / 255, blue: Double(bg.2) / 255, alpha: 1)
         pass.colorAttachments[0].loadAction = .clear
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        let cursor = frame.cursor_visible ? (col: Int(frame.cursor_col), row: Int(frame.cursor_row)) : nil
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return cursor }
         defer { encoder.endEncoding() }
-        guard frame.cell_count > 0 else { return }
+        guard frame.cell_count > 0 else { return cursor }
 
         var uniforms = Uniforms(
             viewport: SIMD2(Float(viewport.width), Float(viewport.height)),
@@ -143,6 +146,7 @@ final class Renderer {
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: count)
         encoder.setRenderPipelineState(glyphPipeline)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: count)
+        return cursor
     }
 
     private func uploadAtlasIfNeeded(generation: UInt64) {
