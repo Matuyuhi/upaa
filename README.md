@@ -1,6 +1,16 @@
-# upaa
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="">
+</p>
 
-A terminal emulator for macOS. The UI and rendering are written in Swift (AppKit, Metal), the core in Zig, and terminal emulation is handled by [libghostty-vt](https://lib.ghostty.org/vt/).
+<h1 align="center">upaa</h1>
+
+<p align="center">A terminal emulator for macOS</p>
+
+<p align="center">
+  <a href="https://github.com/Matuyuhi/upaa/actions/workflows/test.yml"><img src="https://github.com/Matuyuhi/upaa/actions/workflows/test.yml/badge.svg" alt="test"></a>
+</p>
+
+The UI and rendering are written in Swift (AppKit, Metal), the core in Zig, and terminal emulation is handled by [libghostty-vt](https://lib.ghostty.org/vt/).
 
 ![upaa screenshot](tests/snapshots/styles.png)
 
@@ -16,8 +26,12 @@ Works today:
 - Running a shell, keyboard input, window resizing
 - 16-color, 256-color and 24-bit color, inverse and underline
 - Japanese and other full-width text (two cells wide), and text committed from an input method
+- Selecting text with the mouse (double-click for a word, triple-click for a line, Option-drag for a rectangle), Cmd-C and Cmd-A
+- Pasting with Cmd-V, asking first when the text could run a command
+- 10 MB of scrollback, scrolled with the wheel or trackpad
+- Mouse input for programs that ask for it (vim with `mouse=a`, htop); hold Shift to select instead
 
-Not yet: selection and copy, paste, scrollback, mouse support, a config file.
+Not yet: a config file, tabs and splits, search.
 
 ## Install
 
