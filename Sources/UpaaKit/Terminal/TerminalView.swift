@@ -15,6 +15,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
     /// Runs while a selection drag is past the top or bottom edge, scrolling one row per tick.
     private var autoscrollTimer: Timer?
     private var lastDrag: NSEvent?
+    /// Fires when the mascot's picture changes, since it moves without the screen changing.
+    private var mascotTimer: Timer?
 
     /// Drawable pixels per view point (2 on Retina).
     private var scale: CGFloat { drawableSize.width / max(bounds.width, 1) }
@@ -66,6 +68,17 @@ final class TerminalView: MTKView, MTKViewDelegate {
             viewport: (Int(drawableSize.width), Int(drawableSize.height)))
         commandBuffer.present(drawable)
         commandBuffer.commit()
+
+        mascotTimer?.invalidate()
+        mascotTimer = renderer.mascotDelay.map { delay in
+            Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in self?.needsDisplay = true }
+        }
+    }
+
+    /// Shows a notice above the mascot (e.g. an update is available).
+    func showNote(_ text: String) {
+        renderer.setNote(text)
+        needsDisplay = true
     }
 
     // MARK: Scrolling
@@ -98,7 +111,9 @@ final class TerminalView: MTKView, MTKViewDelegate {
 
     override func mouseDown(with event: NSEvent) {
         if reportsMouse(event) { return session.reportMouse(pointer(UPAA_POINTER_PRESS, event, button: 1)) }
-        _ = session.select(pointer(UPAA_POINTER_PRESS, event))
+        let press = pointer(UPAA_POINTER_PRESS, event)
+        renderer.pokeMascot(x: press.x, y: press.y)
+        _ = session.select(press)
         needsDisplay = true
     }
 

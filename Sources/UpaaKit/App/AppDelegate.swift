@@ -7,16 +7,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let scale = Double(NSScreen.main?.backingScaleFactor ?? 2)
         guard let device = MTLCreateSystemDefaultDevice(),
-              let renderer = try? Renderer(device: device, fontName: Defaults.fontName, fontSize: Defaults.fontSize, scale: scale),
-              let session = TerminalSession(cols: UInt16(Defaults.cols), rows: UInt16(Defaults.rows), showIntro: true)
+              let renderer = try? Renderer(
+                  device: device, fontName: Defaults.fontName, fontSize: Defaults.fontSize, scale: scale, mascot: true),
+              let session = TerminalSession(cols: UInt16(Defaults.cols), rows: UInt16(Defaults.rows))
         else {
             NSLog("upaa: failed to start the terminal")
             NSApp.terminate(nil)
             return
         }
         session.onExit = { NSApp.terminate(nil) }
-        // While the startup face is playing, check for updates in the background.
-        UpdateCheck.run { [weak session] message in session?.setIntroNote(message) }
 
         let pixels = renderer.pixelSize(cols: Defaults.cols, rows: Defaults.rows)
         let size = NSSize(width: Double(pixels.width) / scale, height: Double(pixels.height) / scale)
@@ -32,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             width: Double(renderer.cellSize.width) / scale, height: Double(renderer.cellSize.height) / scale)
         let view = TerminalView(session: session, renderer: renderer)
         window.contentView = view
+        UpdateCheck.run { [weak view] message in view?.showNote(message) }
         window.makeFirstResponder(view)
         window.center()
         window.makeKeyAndOrderFront(nil)

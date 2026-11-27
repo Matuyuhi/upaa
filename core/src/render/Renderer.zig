@@ -8,6 +8,7 @@ const Face = @import("../font/Face.zig");
 const Session = @import("../term/Session.zig");
 const Cell = @import("Cell.zig").Cell;
 const Frame = @import("Frame.zig");
+const Mascot = @import("Mascot.zig");
 
 const alloc = std.heap.c_allocator;
 
@@ -15,8 +16,16 @@ face: Face,
 atlas: Atlas,
 state: vt.GhosttyRenderState,
 frame: Frame,
+/// null when the mascot is not drawn (snapshots).
+mascot: ?Mascot,
+/// Notice drawn above the mascot (e.g. an update is available).
+note: [160]u8 = undefined,
+note_len: usize = 0,
+/// Grid size of the last frame, to tell whether a click hit the mascot.
+cols: u16 = 0,
+rows: u16 = 0,
 
-pub fn create(font_name: [*:0]const u8, font_size_px: f64) !*Renderer {
+pub fn create(font_name: [*:0]const u8, font_size_px: f64, mascot: bool) !*Renderer {
     const self = try alloc.create(Renderer);
     errdefer alloc.destroy(self);
 
@@ -29,7 +38,13 @@ pub fn create(font_name: [*:0]const u8, font_size_px: f64) !*Renderer {
     errdefer vt.ghostty_render_state_free(state);
     const frame = try Frame.init();
 
-    self.* = .{ .face = face, .atlas = atlas, .state = state, .frame = frame };
+    self.* = .{
+        .face = face,
+        .atlas = atlas,
+        .state = state,
+        .frame = frame,
+        .mascot = if (mascot) .{ .greeted_ms = nowMs() } else null,
+    };
     return self;
 }
 
@@ -44,7 +59,34 @@ pub fn destroy(self: *Renderer) void {
 /// Writes the session's current screen to out. preedit is the IME composing string (empty if none).
 pub fn buildFrame(self: *Renderer, session: *Session, preedit: []const u8, out: []Cell) Frame.Info {
     if (!session.updateRenderState(self.state)) return .{};
-    const info = self.frame.build(self.state, self.face, &self.atlas, preedit, out);
+    var info = self.frame.build(self.state, self.face, &self.atlas, preedit, out);
     _ = vt.ghostty_render_state_clean(self.state);
+    self.cols = info.cols;
+    self.rows = info.rows;
+    if (self.mascot) |mascot| if (info.cell_count == @as(u32, info.cols) * info.rows) {
+        const note = self.note[0..self.note_len];
+        info.mascot_next_ms = mascot.draw(out[0..info.cell_count], info.cols, info.rows, info.background, note, self.face, &self.atlas, nowMs());
+        info.atlas_generation = self.atlas.generation;
+    };
     return info;
+}
+
+pub fn setNote(self: *Renderer, text: []const u8) void {
+    self.note_len = @min(text.len, self.note.len);
+    @memcpy(self.note[0..self.note_len], text[0..self.note_len]);
+}
+
+/// Plays the mascot's greeting again if the cell (col, row) is on it. Returns whether it was.
+pub fn pokeMascot(self: *Renderer, col: i32, row: i32) bool {
+    if (self.mascot) |*mascot| if (Mascot.covers(self.cols, self.rows, col, row)) {
+        mascot.poke(nowMs());
+        return true;
+    };
+    return false;
+}
+
+fn nowMs() u64 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.MONOTONIC, &ts);
+    return @as(u64, @intCast(ts.sec)) * 1000 + @as(u64, @intCast(ts.nsec)) / std.time.ns_per_ms;
 }

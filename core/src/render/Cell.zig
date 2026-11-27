@@ -13,6 +13,8 @@ pub const Cell = extern struct {
     pub const Flags = struct {
         /// Draws an underline in the foreground color below the cell.
         pub const underline: u32 = 1 << 0;
+        /// The right half of a wide character. Not used for drawing; tells the mascot the cell is taken.
+        pub const wide_tail: u32 = 1 << 1;
     };
 
     comptime {

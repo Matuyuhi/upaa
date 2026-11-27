@@ -9,7 +9,6 @@ const c = @import("posix");
 const vt = @import("ghostty");
 const Pty = @import("Pty.zig");
 const keymap = @import("keymap.zig");
-const intro = @import("intro.zig");
 
 const alloc = std.heap.c_allocator;
 
@@ -29,13 +28,6 @@ stop_pipe: [2]c_int,
 /// Calls on_wakeup only when the screen change has not been reported yet. takeDirty resets it.
 dirty: std.atomic.Value(bool) = .init(false),
 callbacks: Callbacks,
-/// Current screen size. Used to center the startup face.
-size: std.atomic.Value(u32),
-/// Whether to draw the startup face before reading shell output.
-show_intro: bool,
-/// Notice shown below the startup face and on line 1 after it disappears (e.g. an update is available). Guarded by the mutex.
-intro_note: [160]u8 = undefined,
-intro_note_len: usize = 0,
 
 pub const Callbacks = extern struct {
     userdata: ?*anyopaque = null,
@@ -103,8 +95,6 @@ pub const Options = struct {
     size: Pty.Size,
     /// null means the login shell.
     command: ?[*:0]const u8 = null,
-    /// Draws the startup face before reading shell output.
-    intro: bool = false,
     callbacks: Callbacks = .{},
 };
 
@@ -163,8 +153,6 @@ pub fn create(opts: Options) !*Session {
         .thread = undefined,
         .stop_pipe = stop_pipe,
         .callbacks = opts.callbacks,
-        .size = .init(packSize(opts.size)),
-        .show_intro = opts.intro,
     };
     self.thread = try std.Thread.spawn(.{}, readLoop, .{self});
     return self;
@@ -230,24 +218,6 @@ pub fn resize(self: *Session, size: Pty.Size, cell_width_px: u32, cell_height_px
     defer self.unlock();
     _ = vt.ghostty_terminal_resize(self.terminal, size.cols, size.rows, cell_width_px, cell_height_px);
     self.pty.resize(size);
-    self.size.store(packSize(size), .release);
-}
-
-/// Decides the notice shown with the startup face. Calling this after the face has finished playing does nothing.
-pub fn setIntroNote(self: *Session, text: []const u8) void {
-    self.lock();
-    defer self.unlock();
-    const n = @min(text.len, self.intro_note.len);
-    @memcpy(self.intro_note[0..n], text[0..n]);
-    self.intro_note_len = n;
-}
-
-fn copyIntroNote(self: *Session, out: []u8) []const u8 {
-    self.lock();
-    defer self.unlock();
-    const n = @min(self.intro_note_len, out.len);
-    @memcpy(out[0..n], self.intro_note[0..n]);
-    return out[0..n];
 }
 
 /// True if the screen changed since the previous call. Resets so that the next on_wakeup is received.
@@ -471,10 +441,6 @@ fn unlock(self: *Session) void {
     _ = std.c.pthread_mutex_unlock(&self.mutex);
 }
 
-fn packSize(size: Pty.Size) u32 {
-    return @as(u32, size.cols) << 16 | size.rows;
-}
-
 /// Writes directly to the terminal and signals that the screen changed.
 fn feed(self: *Session, bytes: []const u8) void {
     self.lock();
@@ -486,25 +452,7 @@ fn feed(self: *Session, bytes: []const u8) void {
     }
 }
 
-/// Draws the startup face one frame at a time. Shell output in the meantime accumulates in the PTY and is read after it finishes.
-/// Returns false if told to stop partway through.
-fn playIntro(self: *Session) bool {
-    var buf: [4096]u8 = undefined;
-    var note_buf: [160]u8 = undefined;
-    var stop = [_]c.struct_pollfd{.{ .fd = self.stop_pipe[0], .events = c.POLLIN, .revents = 0 }};
-    for (0..intro.frame_count) |index| {
-        const size = self.size.load(.acquire);
-        const note = self.copyIntroNote(&note_buf);
-        self.feed(intro.frame(&buf, @intCast(size >> 16), @truncate(size), index, note));
-        if (c.poll(&stop, 1, intro.frame_ms) > 0) return false;
-    }
-    self.feed(intro.finish(&buf, self.copyIntroNote(&note_buf)));
-    return true;
-}
-
 fn readLoop(self: *Session) void {
-    if (self.show_intro and !self.playIntro()) return;
-
     var buf: [64 * 1024]u8 = undefined;
     var fds = [_]c.struct_pollfd{
         .{ .fd = self.pty.master, .events = c.POLLIN, .revents = 0 },
@@ -582,30 +530,6 @@ test "keys are encoded for the child" {
     self.typeText("echo key-$((1+1))");
     self.key(.{ .key_code = 36, .action = .press });
     try self.waitForText("key-2", &out);
-}
-
-test "intro is drawn before the shell output" {
-    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "echo after-intro; sleep 5", .intro = true });
-    defer self.destroy();
-    var out: [4096]u8 = undefined;
-
-    try self.waitForText("upaa", &out);
-    try std.testing.expect(std.mem.indexOf(u8, &out, "after-intro") == null);
-    // After the face disappears, the shell output that accumulated meanwhile is printed.
-    try self.waitForText("after-intro", &out);
-    const n = self.plainText(&out).?;
-    try std.testing.expect(std.mem.indexOf(u8, out[0..n], "upaa") == null);
-}
-
-test "intro note stays on the first line after the face is gone" {
-    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "echo after-intro; sleep 5", .intro = true });
-    defer self.destroy();
-    self.setIntroNote("v9.9.9 is out");
-    var out: [4096]u8 = undefined;
-
-    try self.waitForText("after-intro", &out);
-    const n = self.plainText(&out).?;
-    try std.testing.expect(std.mem.startsWith(u8, out[0..n], "v9.9.9 is out\nafter-intro"));
 }
 
 test "scrollback keeps history, and input returns to the live screen" {

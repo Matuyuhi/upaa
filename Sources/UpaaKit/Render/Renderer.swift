@@ -27,10 +27,12 @@ final class Renderer {
     private let atlasTexture: MTLTexture
     private var atlasGeneration: UInt64 = 0
     private var cellBuffer: MTLBuffer?
+    /// Seconds after the last draw until the mascot changes, or nil if nothing waits on it.
+    private(set) var mascotDelay: TimeInterval?
 
-    /// fontSize is in points; scale is the screen scale factor (2 on Retina).
-    init(device: MTLDevice, fontName: String, fontSize: Double, scale: Double) throws {
-        guard let handle = upaa_renderer_new(fontName, fontSize * scale) else { throw SetupError.font }
+    /// fontSize is in points; scale is the screen scale factor (2 on Retina). mascot draws the axolotl behind the text.
+    init(device: MTLDevice, fontName: String, fontSize: Double, scale: Double, mascot: Bool = false) throws {
+        guard let handle = upaa_renderer_new(fontName, fontSize * scale, mascot) else { throw SetupError.font }
         self.handle = handle
         self.device = device
         let metrics = upaa_renderer_metrics(handle)
@@ -121,6 +123,7 @@ final class Renderer {
         let preeditBytes = Array(preedit.utf8)
         let frame = upaa_renderer_frame(handle, session.handle, preeditBytes, preeditBytes.count, cells, capacity)
         uploadAtlasIfNeeded(generation: frame.atlas_generation)
+        mascotDelay = frame.mascot_next_ms > 0 ? Double(frame.mascot_next_ms) / 1000 : nil
 
         let bg = frame.background
         pass.colorAttachments[0].clearColor = MTLClearColor(
@@ -147,6 +150,19 @@ final class Renderer {
         encoder.setRenderPipelineState(glyphPipeline)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: count)
         return cursor
+    }
+
+    /// Notice drawn above the mascot (e.g. an update is available).
+    func setNote(_ text: String) {
+        upaa_renderer_set_note(handle, text)
+    }
+
+    /// Plays the mascot's greeting again if the point (drawable pixels from the top-left) is on it. Returns whether it was.
+    @discardableResult
+    func pokeMascot(x: Double, y: Double) -> Bool {
+        let col = ((x - Double(padding.horizontal)) / Double(cellSize.width)).rounded(.down)
+        let row = ((y - Double(padding.top)) / Double(cellSize.height)).rounded(.down)
+        return upaa_renderer_poke_mascot(handle, Int32(col), Int32(row))
     }
 
     private func uploadAtlasIfNeeded(generation: UInt64) {

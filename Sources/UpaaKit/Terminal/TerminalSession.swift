@@ -19,8 +19,7 @@ final class TerminalSession {
     }
 
     /// If command is nil, starts the login shell; otherwise starts /bin/sh -c command.
-    /// If showIntro is true, draws the startup face on screen before the shell's output.
-    init?(cols: UInt16, rows: UInt16, command: String? = nil, showIntro: Bool = false) {
+    init?(cols: UInt16, rows: UInt16, command: String? = nil) {
         let events = Events()
         var callbacks = UpaaSessionCallbacks(
             userdata: Unmanaged.passUnretained(events).toOpaque(),
@@ -33,7 +32,7 @@ final class TerminalSession {
                 DispatchQueue.main.async { events.onExit?() }
             }
         )
-        guard let handle = upaa_session_new(cols, rows, command, showIntro, &callbacks) else { return nil }
+        guard let handle = upaa_session_new(cols, rows, command, &callbacks) else { return nil }
         self.handle = handle
         self.events = events
     }
@@ -110,11 +109,6 @@ final class TerminalSession {
 
     func resize(cols: UInt16, rows: UInt16, cellWidth: Int, cellHeight: Int) {
         upaa_session_resize(handle, cols, rows, UInt32(cellWidth), UInt32(cellHeight))
-    }
-
-    /// Notice shown with the startup face. Calling it after the face has finished playing does nothing.
-    func setIntroNote(_ text: String) {
-        upaa_session_set_intro_note(handle, text)
     }
 
     /// Plain text of the screen.
