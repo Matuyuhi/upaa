@@ -6,6 +6,8 @@
     <string>ja</string>
     <key>CFBundleExecutable</key>
     <string>upaa</string>
+    <key>CFBundleIconFile</key>
+    <string>upaa</string>
     <key>CFBundleIdentifier</key>
     <string>local.upaa</string>
     <key>CFBundleName</key>
