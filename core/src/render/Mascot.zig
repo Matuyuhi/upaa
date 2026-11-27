@@ -81,7 +81,7 @@ pub fn draw(m: Mascot, cells: []Cell, cols: u16, rows: u16, background: [4]u8, n
         }
     }
 
-    // The note ends where the picture ends. It is ASCII (UpdateCheck.swift), so one byte is one cell.
+    // The note ends where the picture ends. It is ASCII (UpdateCheck.swift, Config.zig), so one byte is one cell.
     const note_row = top.row - 1;
     if (note_row >= 0) {
         const start = top.col + width - @as(i32, @intCast(note.len));

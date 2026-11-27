@@ -9,6 +9,7 @@ const c = @import("posix");
 const vt = @import("ghostty");
 const Pty = @import("Pty.zig");
 const keymap = @import("keymap.zig");
+const Config = @import("../Config.zig");
 
 const alloc = std.heap.c_allocator;
 
@@ -96,6 +97,8 @@ pub const Options = struct {
     /// null means the login shell.
     command: ?[*:0]const u8 = null,
     callbacks: Callbacks = .{},
+    /// Colors for the terminal. null keeps libghostty-vt's defaults.
+    config: ?*const Config = null,
 };
 
 pub fn create(opts: Options) !*Session {
@@ -111,6 +114,7 @@ pub fn create(opts: Options) !*Session {
     // The library default (10,000 bytes) keeps only a few hundred lines of scrollback.
     var scrollback: usize = 10 * 1024 * 1024;
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollback);
+    if (opts.config) |config| config.applyColors(terminal);
 
     var key_encoder: vt.GhosttyKeyEncoder = null;
     if (vt.ghostty_key_encoder_new(null, &key_encoder) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;

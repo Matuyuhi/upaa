@@ -30,8 +30,9 @@ Works today:
 - Pasting with Cmd-V, asking first when the text could run a command
 - 10 MB of scrollback, scrolled with the wheel or trackpad
 - Mouse input for programs that ask for it (vim with `mouse=a`, htop); hold Shift to select instead
+- A config file for the font, colors and window size (see Configuration)
 
-Not yet: a config file, tabs and splits, search.
+Not yet: tabs and splits, search.
 
 ## Install
 
@@ -52,6 +53,24 @@ upaa --version
 ```
 
 On launch, upaa asks GitHub at most once a day whether a newer release exists. It only tells you; it never updates on its own. Set `UPAA_NO_UPDATE_CHECK=1` to turn the check off.
+
+## Configuration
+
+upaa reads `~/.config/upaa/config` (or `$XDG_CONFIG_HOME/upaa/config`) at launch. Each line is `key = value`; lines starting with `#` are comments (a `#` later in a line is part of the value). The keys and color syntax are Ghostty's, so these lines can be copied from a Ghostty config.
+
+```
+font-family = JetBrains Mono
+font-size = 14
+# window size in cells
+window-width = 100
+window-height = 30
+foreground = #cdd6f4
+background = #1e1e2e
+# one of the 256 colors; repeat the line for others
+palette = 1=#f38ba8
+```
+
+Colors are `#rrggbb`, `#rgb` or an X11 name. A line that cannot be read keeps the default, and the first one is shown in the window. Changes take effect the next time upaa starts.
 
 ## Development
 

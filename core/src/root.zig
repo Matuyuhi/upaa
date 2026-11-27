@@ -4,6 +4,7 @@ const std = @import("std");
 const vt = @import("ghostty");
 const Session = @import("term/Session.zig");
 const version = @import("version.zig");
+const Config = @import("Config.zig");
 const Renderer = @import("render/Renderer.zig");
 const Cell = @import("render/Cell.zig").Cell;
 const Frame = @import("render/Frame.zig");
@@ -17,6 +18,7 @@ comptime {
     _ = @import("font/Atlas.zig");
     _ = @import("render/Frame.zig");
     _ = @import("render/Mascot.zig");
+    _ = @import("Config.zig");
 }
 
 /// upaa's own version (.version in build.zig.zon).
@@ -29,14 +31,32 @@ export fn upaa_version_is_newer(candidate: [*:0]const u8) bool {
     return version.isNewer(std.mem.span(candidate));
 }
 
+// Config file
+
+/// Reads the text of the config file (UTF-8). Settings it does not name keep their defaults. null only when out of memory.
+export fn upaa_config_new(text: ?[*]const u8, len: usize) ?*Config {
+    const config = std.heap.c_allocator.create(Config) catch return null;
+    config.* = Config.parse(if (text) |t| t[0..len] else "");
+    return config;
+}
+
+export fn upaa_config_free(config: *Config) void {
+    std.heap.c_allocator.destroy(config);
+}
+
+export fn upaa_config_values(config: *const Config) Config.Values {
+    return config.values();
+}
+
 // Terminal session
 
-/// If command is null, starts the login shell; otherwise starts /bin/sh -c command.
-export fn upaa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, callbacks: ?*const Session.Callbacks) ?*Session {
+/// If command is null, starts the login shell; otherwise starts /bin/sh -c command. config null keeps the default colors.
+export fn upaa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, config: ?*const Config, callbacks: ?*const Session.Callbacks) ?*Session {
     return Session.create(.{
         .size = .{ .cols = cols, .rows = rows },
         .command = command,
         .callbacks = if (callbacks) |cb| cb.* else .{},
+        .config = config,
     }) catch null;
 }
 

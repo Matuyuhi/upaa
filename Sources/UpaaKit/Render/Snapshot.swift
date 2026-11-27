@@ -105,7 +105,8 @@ enum Snapshot {
 
         init(cols: Int, rows: Int, command: String?) throws {
             guard let device = MTLCreateSystemDefaultDevice() else { throw Failure.message("no Metal device") }
-            renderer = try Renderer(device: device, fontName: Defaults.fontName, fontSize: Defaults.fontSize, scale: 2)
+            let defaults = Config()
+            renderer = try Renderer(device: device, fontName: defaults.fontFamily, fontSize: defaults.fontSize, scale: 2)
             guard let session = TerminalSession(cols: UInt16(cols), rows: UInt16(rows), command: command) else {
                 throw Failure.message("failed to start terminal session")
             }

@@ -11,6 +11,27 @@ const char *upaa_version(void);
 // true if candidate (form "v0.2.0" or "0.2.0") is newer than the current version. false if it cannot be parsed.
 bool upaa_version_is_newer(const char *candidate);
 
+// Config file (key = value lines, Ghostty's keys and color syntax)
+
+typedef struct UpaaConfig UpaaConfig;
+
+typedef struct {
+    // NUL-terminated. Valid while the config lives.
+    const char *font_family;
+    // Points.
+    double font_size;
+    // Cells.
+    uint16_t window_width;
+    uint16_t window_height;
+    // The first line that could not be read (ASCII), or NULL. Valid while the config lives.
+    const char *problem;
+} UpaaConfigValues;
+
+// Reads the text of the config file (UTF-8). Settings it does not name keep their defaults. NULL only when out of memory.
+UpaaConfig *upaa_config_new(const uint8_t *text, size_t len);
+void upaa_config_free(UpaaConfig *config);
+UpaaConfigValues upaa_config_values(const UpaaConfig *config);
+
 // Terminal session (bundles the PTY, the shell, and the libghostty-vt terminal)
 
 typedef struct UpaaSession UpaaSession;
@@ -25,7 +46,9 @@ typedef struct {
 } UpaaSessionCallbacks;
 
 // If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. Returns NULL on failure.
-UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const UpaaSessionCallbacks *callbacks);
+// The colors come from config (NULL keeps the defaults); config can be freed afterwards.
+UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const UpaaConfig *config,
+                              const UpaaSessionCallbacks *callbacks);
 void upaa_session_free(UpaaSession *session);
 void upaa_session_write(UpaaSession *session, const uint8_t *data, size_t len);
 // A key was pressed once (and released).
