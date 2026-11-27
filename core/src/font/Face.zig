@@ -22,6 +22,9 @@ pub fn init(name: [*:0]const u8, size_px: f64) error{FontNotFound}!Face {
     const cf_name = c.CFStringCreateWithCString(null, name, c.kCFStringEncodingUTF8) orelse return error.FontNotFound;
     defer c.CFRelease(cf_name);
     const font = c.CTFontCreateWithName(cf_name, size_px, null) orelse return error.FontNotFound;
+    errdefer c.CFRelease(font);
+    // For a name it does not know, CoreText returns some other font instead of failing.
+    if (!isNamed(font, cf_name)) return error.FontNotFound;
 
     // Monospace font, so the advance width is the same for every character.
     var units = [_]c.UniChar{'M'};
@@ -50,6 +53,17 @@ pub fn init(name: [*:0]const u8, size_px: f64) error{FontNotFound}!Face {
     };
 }
 
+/// Whether name is the PostScript, family, or full name of font (ignoring case).
+fn isNamed(font: c.CTFontRef, name: c.CFStringRef) bool {
+    var found = false;
+    for ([_]c.CFStringRef{ c.CTFontCopyPostScriptName(font), c.CTFontCopyFamilyName(font), c.CTFontCopyFullName(font) }) |copy| {
+        const copied = copy orelse continue;
+        defer c.CFRelease(copied);
+        if (c.CFStringCompare(copied, name, @intCast(c.kCFCompareCaseInsensitive)) == c.kCFCompareEqualTo) found = true;
+    }
+    return found;
+}
+
 pub fn deinit(face: Face) void {
     c.CFRelease(face.font);
 }
@@ -61,4 +75,5 @@ test "Menlo metrics" {
     try std.testing.expect(face.metrics.cell_height > face.metrics.baseline);
     try std.testing.expect(face.metrics.underline_offset > face.metrics.baseline);
     try std.testing.expect(face.metrics.underline_offset + face.metrics.underline_thickness <= face.metrics.cell_height);
+    try std.testing.expectError(error.FontNotFound, Face.init("No Such Font upaa", 26));
 }

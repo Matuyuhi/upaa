@@ -20,10 +20,11 @@ public enum UpaaApp {
             exit(0)
         }
 
+        let defaults = Config()
         do {
             if let path = value(after: "--snapshot", in: arguments) {
                 try Snapshot.write(
-                    to: URL(fileURLWithPath: path), cols: Defaults.cols, rows: Defaults.rows,
+                    to: URL(fileURLWithPath: path), cols: defaults.cols, rows: defaults.rows,
                     command: value(after: "--command", in: arguments), input: value(after: "--input", in: arguments))
                 exit(0)
             }
@@ -37,7 +38,7 @@ public enum UpaaApp {
             }
 
             if let file = value(after: "--bench-headless", in: arguments) {
-                let result = try Snapshot.bench(file: file, cols: Defaults.cols, rows: Defaults.rows)
+                let result = try Snapshot.bench(file: file, cols: defaults.cols, rows: defaults.rows)
                 let maxFrame = value(after: "--max-frame-ms", in: arguments).flatMap(Double.init) ?? .infinity
                 let minSpeed = value(after: "--min-mb-per-s", in: arguments).flatMap(Double.init) ?? 0
                 print(String(format: "cat (no rendering): %.1f MB/s (min %.1f)", result.megabytesPerSecond, minSpeed))
