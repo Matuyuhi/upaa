@@ -31,9 +31,10 @@ Works today:
 - 10 MB of scrollback, scrolled with the wheel or trackpad
 - Mouse input for programs that ask for it (vim with `mouse=a`, htop); hold Shift to select instead
 - A config file for the font, colors and window size (see Configuration)
-- Windows and tabs named after the title the program sets (Cmd-N, Cmd-T, Cmd-W, Cmd-Shift-[ and Cmd-Shift-], Cmd-1 to Cmd-9)
+- Windows and tabs named after the title the program sets (Cmd-N, Cmd-T, Cmd-Shift-[ and Cmd-Shift-], Cmd-1 to Cmd-9)
+- Split panes (Cmd-D to the right, Cmd-Shift-D below, Cmd-[ and Cmd-] to move, Cmd-W to close); a new pane or tab starts in the current shell's directory
 
-Not yet: splits, search.
+Not yet: search.
 
 ## Install
 

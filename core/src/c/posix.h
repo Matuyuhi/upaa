@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <libproc.h>
 #include <poll.h>
 #include <pwd.h>
 #include <signal.h>

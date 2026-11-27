@@ -24,8 +24,9 @@ final class TerminalSession {
         set { events.onTitle = newValue }
     }
 
-    /// If command is nil, starts the login shell; otherwise starts /bin/sh -c command. config nil keeps the default colors.
-    init?(cols: UInt16, rows: UInt16, command: String? = nil, config: Config? = nil) {
+    /// If command is nil, starts the login shell; otherwise starts /bin/sh -c command. cwd nil starts in the home directory
+    /// (or the current one for a command). config nil keeps the default colors.
+    init?(cols: UInt16, rows: UInt16, command: String? = nil, cwd: String? = nil, config: Config? = nil) {
         let events = Events()
         var callbacks = UpaaSessionCallbacks(
             userdata: Unmanaged.passUnretained(events).toOpaque(),
@@ -42,7 +43,7 @@ final class TerminalSession {
                 DispatchQueue.main.async { events.onTitle?() }
             }
         )
-        guard let handle = upaa_session_new(cols, rows, command, config?.handle, &callbacks) else { return nil }
+        guard let handle = upaa_session_new(cols, rows, command, cwd, config?.handle, &callbacks) else { return nil }
         self.handle = handle
         self.events = events
     }
@@ -119,6 +120,13 @@ final class TerminalSession {
 
     func resize(cols: UInt16, rows: UInt16, cellWidth: Int, cellHeight: Int) {
         upaa_session_resize(handle, cols, rows, UInt32(cellWidth), UInt32(cellHeight))
+    }
+
+    /// The shell's current directory, or nil if unknown. Programs it started (such as Claude Code) may be elsewhere.
+    var cwd: String? {
+        var out = [UInt8](repeating: 0, count: 1024)
+        let n = upaa_session_cwd(handle, &out, out.count)
+        return n > 0 ? String(decoding: out.prefix(n), as: UTF8.self) : nil
     }
 
     /// The title the program set (OSC 0 or 2), or nil if it set none.

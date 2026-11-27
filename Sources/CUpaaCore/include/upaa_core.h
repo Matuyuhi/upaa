@@ -47,9 +47,10 @@ typedef struct {
     void (*on_title)(void *userdata);
 } UpaaSessionCallbacks;
 
-// If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. Returns NULL on failure.
+// If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. cwd NULL starts in the home
+// directory (login shell) or the current one (command). Returns NULL on failure.
 // The colors come from config (NULL keeps the defaults); config can be freed afterwards.
-UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const UpaaConfig *config,
+UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const char *cwd, const UpaaConfig *config,
                               const UpaaSessionCallbacks *callbacks);
 void upaa_session_free(UpaaSession *session);
 void upaa_session_write(UpaaSession *session, const uint8_t *data, size_t len);
@@ -125,6 +126,8 @@ void upaa_session_scroll(UpaaSession *session, ptrdiff_t rows);
 void upaa_session_key(UpaaSession *session, const UpaaKeyEvent *event);
 void upaa_session_resize(UpaaSession *session, uint16_t cols, uint16_t rows, uint32_t cell_width_px, uint32_t cell_height_px);
 bool upaa_session_take_dirty(UpaaSession *session);
+// The shell's current directory, read from the kernel. Returns its length; 0 if unknown or longer than cap.
+size_t upaa_session_cwd(UpaaSession *session, uint8_t *out, size_t cap);
 // The title the program set (UTF-8). Returns the full length (0 if none); anything beyond cap is truncated.
 size_t upaa_session_title(UpaaSession *session, uint8_t *out, size_t cap);
 // Plain text of the screen. The return value is the original length; anything beyond cap is truncated. -1 on failure.

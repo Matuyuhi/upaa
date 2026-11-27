@@ -52,14 +52,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Make the size change in steps of one cell.
         window.contentResizeIncrements = NSSize(
             width: Double(renderer.cellSize.width) / scale, height: Double(renderer.cellSize.height) / scale)
-        let tabs = TabbedWindow(window: window, first: terminal) { [weak self] in self?.makeTerminal() }
+        let tabs = TabbedWindow(window: window, first: terminal) { [weak self] cwd in self?.makeTerminal(cwd: cwd) }
         tabs.onClose = { [weak self, weak tabs] in self?.windows.removeAll { $0 === tabs } }
         windows.append(tabs)
         return (window, terminal)
     }
 
-    /// A terminal view with its own shell.
-    private func makeTerminal() -> TerminalView? {
+    /// A terminal view with its own shell, started in cwd (nil for the home directory).
+    private func makeTerminal(cwd: String? = nil) -> TerminalView? {
         let scale = scale
         func makeRenderer(device: MTLDevice) -> Renderer? {
             try? Renderer(device: device, fontName: fontFamily, fontSize: config.fontSize, scale: scale, mascot: true)
@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                   fontFamily = Config().fontFamily
                   return makeRenderer(device: device)
               }(),
-              let session = TerminalSession(cols: UInt16(config.cols), rows: UInt16(config.rows), config: config)
+              let session = TerminalSession(cols: UInt16(config.cols), rows: UInt16(config.rows), cwd: cwd, config: config)
         else { return nil }
         let view = TerminalView(session: session, renderer: renderer)
         if let problem {

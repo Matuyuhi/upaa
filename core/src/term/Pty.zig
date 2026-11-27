@@ -21,9 +21,9 @@ pub const Size = struct {
 
 pub const SpawnError = error{ ForkFailed, NoShell };
 
-/// If command is null, starts the user's login shell as a login shell in the home directory.
-/// If not null, runs /bin/sh -c command in the current directory (for tests and screen dumps).
-pub fn spawn(command: ?[*:0]const u8, size: Size) SpawnError!Pty {
+/// If command is null, starts the user's login shell as a login shell, in cwd or else the home directory.
+/// If not null, runs /bin/sh -c command in cwd or else the current directory (for tests and screen dumps).
+pub fn spawn(command: ?[*:0]const u8, cwd: ?[*:0]const u8, size: Size) SpawnError!Pty {
     // malloc is not allowed between fork and exec, so build the needed strings before fork.
     const path: [*:0]const u8 = if (command == null) loginShell() orelse return error.NoShell else "/bin/sh";
     var argv0_buf: [256]u8 = undefined;
@@ -31,7 +31,7 @@ pub fn spawn(command: ?[*:0]const u8, size: Size) SpawnError!Pty {
         .{ "sh", "-c", cmd, null }
     else
         .{ loginArgv0(path, &argv0_buf), null, null, null };
-    const home: ?[*:0]const u8 = if (command == null) c.getenv("HOME") else null;
+    const dir: ?[*:0]const u8 = cwd orelse if (command == null) c.getenv("HOME") else null;
 
     var ws = size.winsize();
     var master: c_int = -1;
@@ -39,7 +39,7 @@ pub fn spawn(command: ?[*:0]const u8, size: Size) SpawnError!Pty {
     if (pid < 0) return error.ForkFailed;
     if (pid == 0) {
         // Child process. From here to exec, call only async-signal-safe functions.
-        if (home) |dir| _ = c.chdir(dir);
+        if (dir) |d| _ = c.chdir(d);
         _ = c.setenv("TERM", "xterm-256color", 1);
         _ = c.execv(path, @ptrCast(&argv));
         c._exit(127);
@@ -64,6 +64,17 @@ pub fn writeAll(pty: Pty, bytes: []const u8) bool {
         rest = rest[@intCast(n)..];
     }
     return true;
+}
+
+/// The child's current directory, read from the kernel, so the shell needs no setup to report it. null if unknown.
+pub fn cwd(pty: Pty, out: []u8) ?[]const u8 {
+    var info: c.struct_proc_vnodepathinfo = undefined;
+    const size: c_int = @sizeOf(c.struct_proc_vnodepathinfo);
+    if (c.proc_pidinfo(pty.child, c.PROC_PIDVNODEPATHINFO, 0, &info, size) != size) return null;
+    const path = std.mem.sliceTo(&info.pvi_cdir.vip_path, 0);
+    if (path.len == 0 or path.len > out.len) return null;
+    @memcpy(out[0..path.len], path);
+    return out[0..path.len];
 }
 
 /// Terminates the child process, reaps it, and closes the fd.

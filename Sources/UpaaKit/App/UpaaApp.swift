@@ -71,12 +71,15 @@ public enum UpaaApp {
         appItem.submenu?.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         mainMenu.addItem(appItem)
 
-        // New Window goes to AppDelegate; the tab items go to the key window's TabbedWindow (its delegate).
+        // New Window goes to AppDelegate; the tab and pane items go to the key window's TabbedWindow (its delegate).
+        // The keys for upaa's own commands are all set here.
         let fileItem = NSMenuItem()
         fileItem.submenu = NSMenu(title: "File")
         fileItem.submenu?.addItem(withTitle: "New Window", action: #selector(AppDelegate.newWindow(_:)), keyEquivalent: "n")
         fileItem.submenu?.addItem(withTitle: "New Tab", action: #selector(TabbedWindow.newTab(_:)), keyEquivalent: "t")
-        fileItem.submenu?.addItem(withTitle: "Close Tab", action: #selector(TabbedWindow.closeTab(_:)), keyEquivalent: "w")
+        fileItem.submenu?.addItem(withTitle: "Split Right", action: #selector(TabbedWindow.splitRight(_:)), keyEquivalent: "d")
+        fileItem.submenu?.addItem(withTitle: "Split Down", action: #selector(TabbedWindow.splitDown(_:)), keyEquivalent: "D")
+        fileItem.submenu?.addItem(withTitle: "Close", action: #selector(TabbedWindow.closePane(_:)), keyEquivalent: "w")
         mainMenu.addItem(fileItem)
 
         // The actions go to the first responder (TerminalView).
@@ -92,6 +95,8 @@ public enum UpaaApp {
         let windowItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Show Previous Pane", action: #selector(TabbedWindow.showPreviousPane(_:)), keyEquivalent: "[")
+        windowMenu.addItem(withTitle: "Show Next Pane", action: #selector(TabbedWindow.showNextPane(_:)), keyEquivalent: "]")
         windowMenu.addItem(withTitle: "Show Previous Tab", action: #selector(TabbedWindow.showPreviousTab(_:)), keyEquivalent: "{")
         windowMenu.addItem(withTitle: "Show Next Tab", action: #selector(TabbedWindow.showNextTab(_:)), keyEquivalent: "}")
         // Cmd-1 to Cmd-9 pick a tab without listing nine items in the menu.

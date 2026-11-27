@@ -19,6 +19,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
     private var mascotTimer: Timer?
     /// A redraw is waiting to run after the current event.
     private var redrawQueued = false
+    /// This view took the keyboard (a click on it, or the window choosing it).
+    var onFocus: (() -> Void)?
 
     /// Drawable pixels per view point (2 on Retina).
     private var scale: CGFloat { drawableSize.width / max(bounds.width, 1) }
@@ -234,6 +236,12 @@ final class TerminalView: MTKView, MTKViewDelegate {
     // MARK: Key input
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func becomeFirstResponder() -> Bool {
+        guard super.becomeFirstResponder() else { return false }
+        onFocus?()
+        return true
+    }
 
     override func keyDown(with event: NSEvent) {
         // Keys that include ⌘ are left to menu shortcuts.
