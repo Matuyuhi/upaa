@@ -71,6 +71,14 @@ public enum UpaaApp {
         appItem.submenu?.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         mainMenu.addItem(appItem)
 
+        // New windows and tabs go to AppDelegate; Close goes to the key window.
+        let fileItem = NSMenuItem()
+        fileItem.submenu = NSMenu(title: "File")
+        fileItem.submenu?.addItem(withTitle: "New Window", action: #selector(AppDelegate.newWindow(_:)), keyEquivalent: "n")
+        fileItem.submenu?.addItem(withTitle: "New Tab", action: #selector(AppDelegate.newWindowForTab(_:)), keyEquivalent: "t")
+        fileItem.submenu?.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        mainMenu.addItem(fileItem)
+
         // The actions go to the first responder (TerminalView).
         let editItem = NSMenuItem()
         editItem.submenu = NSMenu(title: "Edit")
@@ -78,6 +86,16 @@ public enum UpaaApp {
         editItem.submenu?.addItem(withTitle: "Paste", action: #selector(TerminalView.paste(_:)), keyEquivalent: "v")
         editItem.submenu?.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
         mainMenu.addItem(editItem)
+
+        // AppKit adds the other tab items (Show Tab Bar, Merge All Windows, ...) to the menu set as windowsMenu.
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Show Previous Tab", action: #selector(NSWindow.selectPreviousTab(_:)), keyEquivalent: "{")
+        windowMenu.addItem(withTitle: "Show Next Tab", action: #selector(NSWindow.selectNextTab(_:)), keyEquivalent: "}")
+        windowItem.submenu = windowMenu
+        mainMenu.addItem(windowItem)
+        NSApplication.shared.windowsMenu = windowMenu
         return mainMenu
     }
 }
