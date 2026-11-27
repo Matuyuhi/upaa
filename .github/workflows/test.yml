@@ -118,8 +118,10 @@ jobs:
           path: build/snapshots
 
   # Show the launch screenshots on the pull request, in one comment edited on each push.
+  # gh pr comment --attach refuses the workflow token, so the pictures go on the ci-screenshots branch,
+  # which holds one commit with the latest pictures of each pull request, and the comment links to them.
   # A separate job, so the job that builds and runs the pull request's code keeps a read-only token.
-  # Uploading an attachment needs write access, and a pull request from a fork never gets it, so it is skipped there.
+  # A pull request from a fork never gets write access, so it is skipped there.
   screenshots-comment:
     needs: test
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -135,13 +137,25 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
       SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      # --attach needs gh 2.99 or later.
       - name: Post the launch screenshots
         run: |
-          gh --version
           gh run download "$GITHUB_RUN_ID" --name launch-screenshots --dir shots
+          git init -q store
+          cd store
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add origin "https://x-access-token:$GH_TOKEN@github.com/$GH_REPO.git"
+          if git fetch -q --depth 1 origin ci-screenshots; then git checkout -q FETCH_HEAD; fi
+          # A new commit with no parent each time, so old pictures do not pile up in the history.
+          git checkout -q --orphan next
+          rm -rf "pr-$PR"
+          mkdir -p "pr-$PR/$SHA"
+          cp ../shots/*.png "pr-$PR/$SHA/"
+          git add -A
+          git commit -q -m "Launch screenshots of #$PR at $SHA"
+          git push -q --force origin HEAD:ci-screenshots
+          url="https://raw.githubusercontent.com/$GH_REPO/ci-screenshots/pr-$PR/$SHA"
           printf '%s\n' "Launch screenshots for $SHA" '' \
-            'Without a config file: ![default](shots/default.png)' '' \
-            'With a config file: ![config](shots/config.png)' > comment.md
-          gh pr comment "$PR" --edit-last --create-if-none --body-file comment.md \
-            --attach shots/default.png --attach shots/config.png
+            "Without a config file: ![default]($url/default.png)" '' \
+            "With a config file: ![config]($url/config.png)" > ../comment.md
+          gh pr comment "$PR" --edit-last --create-if-none --body-file ../comment.md
