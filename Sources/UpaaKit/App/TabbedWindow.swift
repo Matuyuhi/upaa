@@ -92,6 +92,9 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
             view.translatesAutoresizingMaskIntoConstraints = false
             ground.addSubview(view)
         }
+        host.wantsLayer = true
+        host.layer?.cornerRadius = Chrome.terminalCornerRadius
+        host.layer?.masksToBounds = true
         buildTabPanel()
         buildHeader()
         sidePanel.content.addSubview(changes)

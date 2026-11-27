@@ -11,8 +11,10 @@ enum Chrome {
     static let trafficLightsWidth: CGFloat = 78
     static let inactivePaneAlpha: CGFloat = 0.6
 
-    /// Selected tab, selected file and the main button.
-    static let pill = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 1, alpha: 0.85) }
+    /// Selected tab, selected file and the main button. The spec's white is lost on light glass without its shadow, so
+    /// the light one is a faint gray.
+    static let pill = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.07) }
+    static let terminalCornerRadius: CGFloat = 10
     static let addedLine = NSColor.systemGreen.withAlphaComponent(0.18)
     static let removedLine = NSColor.systemRed.withAlphaComponent(0.16)
 
