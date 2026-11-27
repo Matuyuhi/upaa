@@ -64,6 +64,11 @@ export fn upaa_session_select_all(session: *Session) void {
     session.selectAll();
 }
 
+/// Pastes text into the shell. Returns 0 pasted, 1 rejected (could run a command; ask, then call with allow_unsafe), 2 failed.
+export fn upaa_session_paste(session: *Session, text: [*]const u8, len: usize, allow_unsafe: bool) u8 {
+    return @intFromEnum(session.paste(text[0..len], allow_unsafe));
+}
+
 /// The selected text. Returns the full length (0 if nothing is selected); anything beyond cap is truncated. -1 on failure.
 export fn upaa_session_selection_text(session: *Session, out: [*]u8, cap: usize) isize {
     return @intCast(session.selectionText(out[0..cap]) orelse return -1);

@@ -241,6 +241,41 @@ pub fn updateRenderState(self: *Session, state: vt.GhosttyRenderState) bool {
     return vt.ghostty_render_state_end_update(state) == vt.GHOSTTY_SUCCESS;
 }
 
+pub const PasteResult = enum(u8) { pasted = 0, rejected = 1, failed = 2 };
+
+/// Pastes text into the shell, framed for the terminal's current mode (bracketed paste when the program asks for it).
+/// Text that could run a command by itself (a line break outside bracketed paste, or the end-of-paste sequence) is
+/// rejected unless allow_unsafe is set: ask the user, then call again with allow_unsafe.
+pub fn paste(self: *Session, text: []const u8, allow_unsafe: bool) PasteResult {
+    self.scroll(.{ .tag = vt.GHOSTTY_TERMINAL_SCROLL_VIEWPORT_BOTTOM, .value = .{ .delta = 0 } });
+    self.lock();
+    defer self.unlock();
+
+    var source = text;
+    const mime: vt.GhosttyString = .{ .ptr = "text/plain", .len = "text/plain".len };
+    const request: vt.GhosttyPaste = .{
+        .size = @sizeOf(vt.GhosttyPaste),
+        .location = vt.GHOSTTY_CLIPBOARD_LOCATION_STANDARD,
+        .source = vt.GHOSTTY_PASTE_SOURCE_CLIPBOARD,
+        .mimes = &mime,
+        .mimes_len = 1,
+        .reader = .{ .read = readPasteText, .userdata = @ptrCast(&source) },
+        .allow_unsafe = allow_unsafe,
+    };
+    // The encoded bytes come back through onWritePty, which writes them to the PTY.
+    return switch (vt.ghostty_terminal_paste(self.terminal, &request, null)) {
+        vt.GHOSTTY_SUCCESS => .pasted,
+        vt.GHOSTTY_REJECTED => .rejected,
+        else => .failed,
+    };
+}
+
+fn readPasteText(userdata: ?*anyopaque, _: vt.GhosttyString, writer: vt.GhosttyWriter) callconv(.c) bool {
+    const text: *const []const u8 = @ptrCast(@alignCast(userdata orelse return false));
+    const writeFn = writer.write orelse return false;
+    return writeFn(writer.userdata, text.*.ptr, text.*.len);
+}
+
 /// The live screen (without the scrollback) as plain text, written to out. Returns the full length.
 pub fn plainText(self: *Session, out: []u8) ?usize {
     self.lock();
@@ -571,4 +606,16 @@ test "mouse gestures select words, ranges and everything" {
     self.selectAll();
     const all = out[0..self.selectionText(&out).?];
     try std.testing.expect(std.mem.indexOf(u8, all, "hello world\nsecond line") != null);
+}
+
+test "paste sends safe text, and holds back text that could run a command" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "read a; read b; echo \"got:$a/$b\"; read _" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+
+    try std.testing.expectEqual(PasteResult.pasted, self.paste("one", false));
+    // A line break would press Enter, so it is rejected until the user agrees.
+    try std.testing.expectEqual(PasteResult.rejected, self.paste("\ntwo\n", false));
+    try std.testing.expectEqual(PasteResult.pasted, self.paste("\ntwo\n", true));
+    try self.waitForText("got:one/two", &out);
 }

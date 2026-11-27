@@ -140,6 +140,23 @@ final class TerminalView: MTKView, MTKViewDelegate {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
+    @objc func paste(_ sender: Any?) {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
+        if session.paste(text, allowUnsafe: false) == .rejected, confirmUnsafePaste(text) {
+            _ = session.paste(text, allowUnsafe: true)
+        }
+    }
+
+    /// Asks before pasting text that could run a command as soon as it is pasted.
+    private func confirmUnsafePaste(_ text: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Paste text that may run commands?"
+        alert.informativeText = "The text contains a line break or a control sequence, so the shell may run it as soon as it is pasted."
+        alert.addButton(withTitle: "Paste")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     override func selectAll(_ sender: Any?) {
         session.selectAll()
         needsDisplay = true

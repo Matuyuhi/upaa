@@ -78,6 +78,11 @@ uint8_t upaa_session_select(UpaaSession *session, const UpaaPointer *pointer);
 void upaa_session_select_all(UpaaSession *session);
 // The selected text (UTF-8). Returns the full length (0 if nothing is selected); anything beyond cap is truncated. -1 on failure.
 ptrdiff_t upaa_session_selection_text(UpaaSession *session, uint8_t *out, size_t cap);
+enum { UPAA_PASTE_PASTED = 0, UPAA_PASTE_REJECTED = 1, UPAA_PASTE_FAILED = 2 };
+// Pastes text into the shell, framed for the terminal's current mode (bracketed paste when the program asks for it).
+// Returns UPAA_PASTE_REJECTED for text that could run a command by itself (such as a line break outside bracketed
+// paste) unless allow_unsafe; ask the user, then call again with allow_unsafe.
+uint8_t upaa_session_paste(UpaaSession *session, const uint8_t *text, size_t len, bool allow_unsafe);
 // Moves the view through the scrollback by rows (up is negative). Writing input moves it back to the bottom.
 void upaa_session_scroll(UpaaSession *session, ptrdiff_t rows);
 // Converts key input into a byte sequence matching the terminal's current mode and sends it to the shell.

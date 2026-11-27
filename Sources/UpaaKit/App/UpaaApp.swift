@@ -74,6 +74,7 @@ public enum UpaaApp {
         let editItem = NSMenuItem()
         editItem.submenu = NSMenu(title: "Edit")
         editItem.submenu?.addItem(withTitle: "Copy", action: #selector(TerminalView.copy(_:)), keyEquivalent: "c")
+        editItem.submenu?.addItem(withTitle: "Paste", action: #selector(TerminalView.paste(_:)), keyEquivalent: "v")
         editItem.submenu?.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
         mainMenu.addItem(editItem)
         return mainMenu

@@ -73,6 +73,18 @@ final class TerminalSession {
         upaa_session_select_all(handle)
     }
 
+    enum PasteResult { case pasted, rejected, failed }
+
+    /// Pastes text into the shell. .rejected means the text could run a command by itself; ask, then retry with allowUnsafe.
+    func paste(_ text: String, allowUnsafe: Bool) -> PasteResult {
+        let bytes = Array(text.utf8)
+        switch Int(upaa_session_paste(handle, bytes, bytes.count, allowUnsafe)) {
+        case UPAA_PASTE_PASTED: return .pasted
+        case UPAA_PASTE_REJECTED: return .rejected
+        default: return .failed
+        }
+    }
+
     /// The selected text, or nil if nothing is selected.
     func selectionText() -> String? {
         let n = upaa_session_selection_text(handle, nil, 0)
