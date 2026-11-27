@@ -71,6 +71,33 @@ jobs:
       - name: Test
         run: sh scripts/test.sh
 
+      # Open the real window and photograph the screen, without and with a config file.
+      # Only a launch failure or a crash fails here; the pictures are kept to look at, not compared.
+      - name: Launch screenshots
+        env:
+          UPAA_NO_UPDATE_CHECK: "1"
+        run: |
+          dir=build/screenshots
+          mkdir -p "$dir/default/upaa" "$dir/config/upaa"
+          printf '%s\n' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' > "$dir/config/upaa/config"
+          for name in default config; do
+            XDG_CONFIG_HOME="$PWD/$dir/$name" build/upaa.app/Contents/MacOS/upaa &
+            pid=$!
+            sleep 5
+            kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
+            screencapture -x "$dir/$name.png"
+            kill "$pid"
+            wait "$pid" || true
+          done
+
+      - name: Keep the launch screenshots
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: launch-screenshots
+          path: build/screenshots/*.png
+          if-no-files-found: ignore
+
       - name: Keep the exported screens
         if: failure()
         uses: actions/upload-artifact@v7.0.2
