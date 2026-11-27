@@ -12,7 +12,6 @@ enum UpdateCheck {
     private static let latestTagKey = "updateCheck.latestTag"
 
     /// If a newer version is available, passes a message to notify. notify is called on the main thread.
-    /// If this does not finish while the startup face is playing, the result is used on the next launch.
     static func run(notify: @escaping (String) -> Void) {
         guard ProcessInfo.processInfo.environment["UPAA_NO_UPDATE_CHECK"] == nil else { return }
         let defaults = UserDefaults.standard

@@ -13,10 +13,10 @@ const Atlas = @import("font/Atlas.zig");
 comptime {
     _ = @import("term/Pty.zig");
     _ = @import("term/keymap.zig");
-    _ = @import("term/intro.zig");
     _ = @import("font/Face.zig");
     _ = @import("font/Atlas.zig");
     _ = @import("render/Frame.zig");
+    _ = @import("render/Mascot.zig");
 }
 
 /// upaa's own version (.version in build.zig.zon).
@@ -32,12 +32,10 @@ export fn upaa_version_is_newer(candidate: [*:0]const u8) bool {
 // Terminal session
 
 /// If command is null, starts the login shell; otherwise starts /bin/sh -c command.
-/// If show_intro is true, draws the startup face before printing shell output.
-export fn upaa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, show_intro: bool, callbacks: ?*const Session.Callbacks) ?*Session {
+export fn upaa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, callbacks: ?*const Session.Callbacks) ?*Session {
     return Session.create(.{
         .size = .{ .cols = cols, .rows = rows },
         .command = command,
-        .intro = show_intro,
         .callbacks = if (callbacks) |cb| cb.* else .{},
     }) catch null;
 }
@@ -97,11 +95,6 @@ export fn upaa_session_resize(session: *Session, cols: u16, rows: u16, cell_widt
     }, cell_width_px, cell_height_px);
 }
 
-/// Notice shown with the startup face. Calling this after the face has finished playing does nothing.
-export fn upaa_session_set_intro_note(session: *Session, text: [*:0]const u8) void {
-    session.setIntroNote(std.mem.span(text));
-}
-
 export fn upaa_session_take_dirty(session: *Session) bool {
     return session.takeDirty();
 }
@@ -113,12 +106,23 @@ export fn upaa_session_plain_text(session: *Session, out: [*]u8, cap: usize) isi
 
 // Rendering
 
-export fn upaa_renderer_new(font_name: [*:0]const u8, font_size_px: f64) ?*Renderer {
-    return Renderer.create(font_name, font_size_px) catch null;
+/// If mascot is true, the axolotl is drawn behind the text.
+export fn upaa_renderer_new(font_name: [*:0]const u8, font_size_px: f64, mascot: bool) ?*Renderer {
+    return Renderer.create(font_name, font_size_px, mascot) catch null;
 }
 
 export fn upaa_renderer_free(renderer: *Renderer) void {
     renderer.destroy();
+}
+
+/// Notice drawn above the mascot (e.g. an update is available).
+export fn upaa_renderer_set_note(renderer: *Renderer, text: [*:0]const u8) void {
+    renderer.setNote(std.mem.span(text));
+}
+
+/// Plays the mascot's greeting again if the cell (col, row) is on it. Returns whether it was.
+export fn upaa_renderer_poke_mascot(renderer: *Renderer, col: i32, row: i32) bool {
+    return renderer.pokeMascot(col, row);
 }
 
 export fn upaa_renderer_metrics(renderer: *Renderer) Face.Metrics {

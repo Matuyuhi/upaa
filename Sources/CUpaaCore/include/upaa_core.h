@@ -25,8 +25,7 @@ typedef struct {
 } UpaaSessionCallbacks;
 
 // If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. Returns NULL on failure.
-// If show_intro is true, draws the startup face (an axolotl made of text characters) on screen before the shell's output.
-UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, bool show_intro, const UpaaSessionCallbacks *callbacks);
+UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const UpaaSessionCallbacks *callbacks);
 void upaa_session_free(UpaaSession *session);
 void upaa_session_write(UpaaSession *session, const uint8_t *data, size_t len);
 // A key was pressed once (and released).
@@ -100,8 +99,6 @@ void upaa_session_scroll(UpaaSession *session, ptrdiff_t rows);
 // Converts key input into a byte sequence matching the terminal's current mode and sends it to the shell.
 void upaa_session_key(UpaaSession *session, const UpaaKeyEvent *event);
 void upaa_session_resize(UpaaSession *session, uint16_t cols, uint16_t rows, uint32_t cell_width_px, uint32_t cell_height_px);
-// Notice shown under the startup face and on line 1 after the face disappears. Calling it after the face has finished playing does nothing.
-void upaa_session_set_intro_note(UpaaSession *session, const char *text);
 bool upaa_session_take_dirty(UpaaSession *session);
 // Plain text of the screen. The return value is the original length; anything beyond cap is truncated. -1 on failure.
 ptrdiff_t upaa_session_plain_text(UpaaSession *session, uint8_t *out, size_t cap);
@@ -138,7 +135,8 @@ typedef struct {
 } UpaaCell;
 
 // Draws an underline in the foreground color below the cell.
-enum { UPAA_CELL_UNDERLINE = 1 << 0 };
+// UPAA_CELL_WIDE_TAIL marks the right half of a wide character (not used for drawing).
+enum { UPAA_CELL_UNDERLINE = 1 << 0, UPAA_CELL_WIDE_TAIL = 1 << 1 };
 
 typedef struct {
     uint32_t cell_count;
@@ -151,12 +149,19 @@ typedef struct {
     uint16_t cursor_col;
     uint16_t cursor_row;
     bool cursor_visible;
+    // Milliseconds until the mascot changes, when the screen should be drawn again. 0 if nothing is waiting.
+    uint32_t mascot_next_ms;
 } UpaaFrame;
 
 // font_size_px is the pixel count after multiplying by the scale factor (2 on Retina). NULL on failure.
-UpaaRenderer *upaa_renderer_new(const char *font_name, double font_size_px);
+// If mascot is true, the axolotl is drawn faintly behind the text, in cells nothing else uses.
+UpaaRenderer *upaa_renderer_new(const char *font_name, double font_size_px, bool mascot);
 void upaa_renderer_free(UpaaRenderer *renderer);
 UpaaMetrics upaa_renderer_metrics(UpaaRenderer *renderer);
+// Notice drawn above the mascot (e.g. an update is available). ASCII.
+void upaa_renderer_set_note(UpaaRenderer *renderer, const char *text);
+// Plays the mascot's greeting again if the cell (col, row) is on it. Returns whether it was.
+bool upaa_renderer_poke_mascot(UpaaRenderer *renderer, int32_t col, int32_t row);
 // Atlas image. 1 byte per pixel; each side is upaa_renderer_atlas_size pixels.
 const uint8_t *upaa_renderer_atlas_pixels(UpaaRenderer *renderer);
 uint32_t upaa_renderer_atlas_size(void);

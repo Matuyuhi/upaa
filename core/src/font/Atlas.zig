@@ -48,7 +48,7 @@ pub fn deinit(atlas: *Atlas) void {
 /// Text that cannot be drawn, or anything after the atlas is full, gets an empty glyph.
 pub fn get(atlas: *Atlas, face: Face, text: []const u8) Glyph {
     if (atlas.glyphs.get(text)) |glyph| return glyph;
-    const glyph = atlas.rasterize(face, text) orelse Glyph{};
+    const glyph = (if (brailleBits(text)) |bits| atlas.drawBraille(face.metrics, bits) else atlas.rasterize(face, text)) orelse Glyph{};
     const key = alloc.dupe(u8, text) catch return glyph;
     atlas.glyphs.put(alloc, key, glyph) catch alloc.free(key);
     return glyph;
@@ -107,6 +107,30 @@ fn rasterize(atlas: *Atlas, face: Face, text: []const u8) ?Glyph {
     };
 }
 
+/// Braille (U+2800 to U+28FF) is drawn here as square dots in a 2 x 4 grid filling the cell, not with a font:
+/// fonts draw small dots with gaps between lines, so pictures made of braille fall apart into stripes.
+fn drawBraille(atlas: *Atlas, metrics: Face.Metrics, bits: u8) ?Glyph {
+    const w = metrics.cell_width;
+    const h = metrics.cell_height;
+    const pos = atlas.reserve(w, h) orelse return null;
+    // Bit i of the codepoint is the dot at dots[i] (column, row).
+    const dots = [8][2]u32{ .{ 0, 0 }, .{ 0, 1 }, .{ 0, 2 }, .{ 1, 0 }, .{ 1, 1 }, .{ 1, 2 }, .{ 0, 3 }, .{ 1, 3 } };
+    const side = @max(1, @min(w / 2, h / 4) * 5 / 9);
+    for (dots, 0..) |dot, i| {
+        if (bits & (@as(u8, 1) << @intCast(i)) == 0) continue;
+        const x = (2 * dot[0] + 1) * w / 4 - side / 2;
+        const y = (2 * dot[1] + 1) * h / 8 - side / 2;
+        for (0..side) |dy| @memset(atlas.pixels[(pos.y + y + dy) * size + pos.x + x ..][0..side], 255);
+    }
+    atlas.generation += 1;
+    return .{ .x = @intCast(pos.x), .y = @intCast(pos.y), .width = @intCast(w), .height = @intCast(h) };
+}
+
+fn brailleBits(text: []const u8) ?u8 {
+    if (text.len != 3 or text[0] != 0xE2 or text[1] & 0xFC != 0xA0) return null;
+    return (text[1] & 0x03) << 6 | (text[2] & 0x3F);
+}
+
 /// Reserve 1 pixel between glyphs so that neighbors do not show through each other.
 fn reserve(atlas: *Atlas, width: u32, height: u32) ?struct { x: u32, y: u32 } {
     if (width + 2 > size) return null;
@@ -156,4 +180,18 @@ test "glyphs are drawn once and cached" {
     try std.testing.expect(ga.width < 2 * face.metrics.cell_width + 4);
 
     try std.testing.expectEqual(@as(u16, 0), atlas.get(face, " ").width);
+}
+
+test "braille is drawn as dots that fill the cell" {
+    const face = try Face.init("Menlo", 26);
+    defer face.deinit();
+    var atlas = try Atlas.init();
+    defer atlas.deinit();
+
+    const one = atlas.get(face, "\u{2801}");
+    const all = atlas.get(face, "\u{28FF}");
+    try std.testing.expectEqual(@as(u16, @intCast(face.metrics.cell_width)), all.width);
+    try std.testing.expectEqual(@as(u16, @intCast(face.metrics.cell_height)), all.height);
+    try std.testing.expect(atlas.inkSum(one) > 0);
+    try std.testing.expectEqual(8 * atlas.inkSum(one), atlas.inkSum(all));
 }

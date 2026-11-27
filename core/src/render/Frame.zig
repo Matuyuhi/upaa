@@ -21,6 +21,8 @@ pub const Info = extern struct {
     cursor_col: u16 = 0,
     cursor_row: u16 = 0,
     cursor_visible: bool = false,
+    /// Milliseconds until the mascot changes, when the screen should be drawn again. 0 if nothing is waiting.
+    mascot_next_ms: u32 = 0,
 };
 
 pub fn init() error{OutOfMemory}!Frame {
@@ -157,6 +159,12 @@ fn readCell(frame: *Frame, face: Face, atlas: *Atlas, default_fg: [4]u8, default
         }
     }
 
+    var raw: vt.GhosttyCell = undefined;
+    var wide: vt.GhosttyCellWide = vt.GHOSTTY_CELL_WIDE_NARROW;
+    if (vt.ghostty_render_state_row_cells_get(cells, vt.GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &raw) == vt.GHOSTTY_SUCCESS)
+        _ = vt.ghostty_cell_get(raw, vt.GHOSTTY_CELL_DATA_WIDE, &wide);
+    if (wide == vt.GHOSTTY_CELL_WIDE_SPACER_TAIL) flags |= Cell.Flags.wide_tail;
+
     // The whole grapheme cluster, so combining marks are drawn with their base. A cluster longer than the buffer is not drawn.
     var text: [64]u8 = undefined;
     var buf: vt.GhosttyBuffer = .{ .ptr = &text, .cap = text.len, .len = 0 };
@@ -210,6 +218,8 @@ test "cells carry glyphs, colors and the cursor" {
     try std.testing.expect(kana.glyph.width > face.metrics.cell_width);
     // Nothing is drawn in the right half of a full-width character's cell.
     try std.testing.expectEqual(@as(u16, 0), kana_tail.glyph.width);
+    try std.testing.expectEqual(Cell.Flags.wide_tail, kana_tail.flags);
+    try std.testing.expectEqual(@as(u32, 0), kana.flags);
     try std.testing.expectEqual(a.fg, cursor.bg);
     try std.testing.expectEqual(@as(u16, 0), empty.glyph.width);
     try std.testing.expectEqual(a.bg, empty.bg);
