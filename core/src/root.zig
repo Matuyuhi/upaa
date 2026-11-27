@@ -1,6 +1,7 @@
 //! Functions exported to C (corresponds to Sources/CUpaaCore/include/upaa_core.h).
 //! Only export fn lives here; the implementation is in each module.
 const std = @import("std");
+const vt = @import("ghostty");
 const Session = @import("term/Session.zig");
 const version = @import("version.zig");
 const Renderer = @import("render/Renderer.zig");
@@ -47,6 +48,11 @@ export fn upaa_session_free(session: *Session) void {
 
 export fn upaa_session_write(session: *Session, data: [*]const u8, len: usize) void {
     session.write(data[0..len]);
+}
+
+/// Moves the view through the scrollback by rows (up is negative).
+export fn upaa_session_scroll(session: *Session, rows: isize) void {
+    session.scroll(.{ .tag = vt.GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA, .value = .{ .delta = rows } });
 }
 
 export fn upaa_session_key(session: *Session, event: *const Session.KeyEvent) void {

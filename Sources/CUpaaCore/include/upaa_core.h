@@ -47,6 +47,8 @@ typedef struct {
 enum { UPAA_KEY_RELEASE = 0, UPAA_KEY_PRESS = 1, UPAA_KEY_REPEAT = 2 };
 enum { UPAA_MOD_SHIFT = 1 << 0, UPAA_MOD_CTRL = 1 << 1, UPAA_MOD_ALT = 1 << 2, UPAA_MOD_SUPER = 1 << 3 };
 
+// Moves the view through the scrollback by rows (up is negative). Writing input moves it back to the bottom.
+void upaa_session_scroll(UpaaSession *session, ptrdiff_t rows);
 // Converts key input into a byte sequence matching the terminal's current mode and sends it to the shell.
 void upaa_session_key(UpaaSession *session, const UpaaKeyEvent *event);
 void upaa_session_resize(UpaaSession *session, uint16_t cols, uint16_t rows, uint32_t cell_width_px, uint32_t cell_height_px);

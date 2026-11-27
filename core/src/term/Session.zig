@@ -82,6 +82,9 @@ pub fn create(opts: Options) !*Session {
     errdefer vt.ghostty_terminal_free(terminal);
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_USERDATA, self);
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_WRITE_PTY, @ptrCast(&onWritePty));
+    // The library default (10,000 bytes) keeps only a few hundred lines of scrollback.
+    var scrollback: usize = 10 * 1024 * 1024;
+    _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollback);
 
     var key_encoder: vt.GhosttyKeyEncoder = null;
     if (vt.ghostty_key_encoder_new(null, &key_encoder) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
@@ -127,7 +130,16 @@ pub fn destroy(self: *Session) void {
 
 /// Input to the child process (e.g. bytes encoding a key press).
 pub fn write(self: *Session, bytes: []const u8) void {
+    // Typing brings the view back to the live screen if it was scrolled into the scrollback.
+    self.scroll(.{ .tag = vt.GHOSTTY_TERMINAL_SCROLL_VIEWPORT_BOTTOM, .value = .{ .delta = 0 } });
     _ = self.pty.writeAll(bytes);
+}
+
+/// Moves the view through the scrollback. Up is a negative delta.
+pub fn scroll(self: *Session, behavior: vt.GhosttyTerminalScrollViewport) void {
+    self.lock();
+    defer self.unlock();
+    _ = vt.ghostty_terminal_scroll_viewport(self.terminal, behavior);
 }
 
 /// Turns a key press into bytes matching the terminal's current mode (e.g. cursor key mode), and sends them to the child process.
@@ -202,9 +214,19 @@ pub fn plainText(self: *Session, out: []u8) ?usize {
     self.lock();
     defer self.unlock();
 
+    // Only the live screen. The formatter would otherwise include the whole scrollback.
+    var cols: u16 = 0;
+    var rows: u16 = 0;
+    _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_COLS, &cols);
+    _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_ROWS, &rows);
+    var screen = std.mem.zeroes(vt.GhosttySelection);
+    if (vt.ghostty_terminal_grid_ref(self.terminal, activePoint(0, 0), &screen.start) != vt.GHOSTTY_SUCCESS) return null;
+    if (vt.ghostty_terminal_grid_ref(self.terminal, activePoint(cols - 1, rows - 1), &screen.end) != vt.GHOSTTY_SUCCESS) return null;
+
     var formatter: vt.GhosttyFormatter = null;
     if (vt.ghostty_formatter_terminal_new(null, &formatter, self.terminal) != vt.GHOSTTY_SUCCESS) return null;
     defer vt.ghostty_formatter_free(formatter);
+    _ = vt.ghostty_formatter_set(formatter, vt.GHOSTTY_FORMATTER_OPT_SELECTION, &screen);
 
     var buf: [*c]u8 = null;
     var n: usize = 0;
@@ -214,6 +236,10 @@ pub fn plainText(self: *Session, out: []u8) ?usize {
     const m = @min(n, out.len);
     if (m > 0) @memcpy(out[0..m], buf[0..m]);
     return n;
+}
+
+fn activePoint(x: u16, y: u16) vt.GhosttyPoint {
+    return .{ .tag = vt.GHOSTTY_POINT_TAG_ACTIVE, .value = .{ .coordinate = .{ .x = x, .y = y } } };
 }
 
 fn lock(self: *Session) void {
@@ -359,4 +385,26 @@ test "intro note stays on the first line after the face is gone" {
     try self.waitForText("after-intro", &out);
     const n = self.plainText(&out).?;
     try std.testing.expect(std.mem.startsWith(u8, out[0..n], "v9.9.9 is out\nafter-intro"));
+}
+
+test "scrollback keeps history, and input returns to the live screen" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "seq 1 2000; echo seq-done; read _" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+    try self.waitForText("seq-done", &out);
+
+    var bar: vt.GhosttyTerminalScrollbar = undefined;
+    self.scroll(.{ .tag = vt.GHOSTTY_TERMINAL_SCROLL_VIEWPORT_TOP, .value = .{ .delta = 0 } });
+    self.lock();
+    _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_SCROLLBAR, &bar);
+    self.unlock();
+    // All 2000 lines are kept, and the view is at the top.
+    try std.testing.expect(bar.total >= 2000);
+    try std.testing.expectEqual(@as(u64, 0), bar.offset);
+
+    self.write("x");
+    self.lock();
+    _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_SCROLLBAR, &bar);
+    self.unlock();
+    try std.testing.expectEqual(bar.total - bar.len, bar.offset);
 }

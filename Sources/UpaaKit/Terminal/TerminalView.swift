@@ -10,6 +10,11 @@ final class TerminalView: MTKView, MTKViewDelegate {
     private var gridSize: (cols: Int, rows: Int) = (0, 0)
     /// The cursor cell from the last frame. The IME candidate window is placed below it.
     private var cursor: (col: Int, row: Int)?
+    /// Scroll amount (in rows) not applied yet, since trackpads scroll by less than a row at a time.
+    private var pendingScroll: CGFloat = 0
+
+    /// Drawable pixels per view point (2 on Retina).
+    private var scale: CGFloat { drawableSize.width / max(bounds.width, 1) }
 
     /// Text being composed with IME. Passed to Zig when drawing and overlaid with an underline at the cursor position.
     private var markedText = NSMutableAttributedString()
@@ -58,6 +63,21 @@ final class TerminalView: MTKView, MTKViewDelegate {
             viewport: (Int(drawableSize.width), Int(drawableSize.height)))
         commandBuffer.present(drawable)
         commandBuffer.commit()
+    }
+
+    // MARK: Scrolling
+
+    override func scrollWheel(with event: NSEvent) {
+        // Trackpads report points; mouse wheels report rows. Positive is toward older output.
+        let rows = event.hasPreciseScrollingDeltas
+            ? event.scrollingDeltaY / (CGFloat(renderer.cellSize.height) / scale)
+            : event.scrollingDeltaY
+        pendingScroll += rows
+        let whole = pendingScroll.rounded(.towardZero)
+        guard whole != 0 else { return }
+        pendingScroll -= whole
+        session.scroll(rows: -Int(whole))
+        needsDisplay = true
     }
 
     // MARK: Key input
@@ -167,7 +187,6 @@ extension TerminalView: NSTextInputClient {
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
         guard let window, let cursor else { return .zero }
         // Renderer works in drawable pixels from the top-left; the view is in points from the bottom-left.
-        let scale = drawableSize.width / max(bounds.width, 1)
         let cell = renderer.cellSize
         let x = CGFloat(renderer.padding.horizontal + cursor.col * cell.width) / scale
         let top = CGFloat(renderer.padding.top + cursor.row * cell.height) / scale

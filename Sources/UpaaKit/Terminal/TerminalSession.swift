@@ -63,6 +63,11 @@ final class TerminalSession {
         }
     }
 
+    /// Moves the view through the scrollback by rows (up is negative).
+    func scroll(rows: Int) {
+        upaa_session_scroll(handle, rows)
+    }
+
     func resize(cols: UInt16, rows: UInt16, cellWidth: Int, cellHeight: Int) {
         upaa_session_resize(handle, cols, rows, UInt32(cellWidth), UInt32(cellHeight))
     }
