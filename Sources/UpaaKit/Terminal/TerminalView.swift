@@ -12,6 +12,9 @@ final class TerminalView: MTKView, MTKViewDelegate {
     private var cursor: (col: Int, row: Int)?
     /// Scroll amount (in rows) not applied yet, since trackpads scroll by less than a row at a time.
     private var pendingScroll: CGFloat = 0
+    /// Runs while a selection drag is past the top or bottom edge, scrolling one row per tick.
+    private var autoscrollTimer: Timer?
+    private var lastDrag: NSEvent?
 
     /// Drawable pixels per view point (2 on Retina).
     private var scale: CGFloat { drawableSize.width / max(bounds.width, 1) }
@@ -77,6 +80,68 @@ final class TerminalView: MTKView, MTKViewDelegate {
         guard whole != 0 else { return }
         pendingScroll -= whole
         session.scroll(rows: -Int(whole))
+        needsDisplay = true
+    }
+
+    // MARK: Selection
+
+    override func mouseDown(with event: NSEvent) {
+        _ = session.select(pointer(UPAA_POINTER_PRESS, event))
+        needsDisplay = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        lastDrag = event
+        let wantsAutoscroll = session.select(pointer(UPAA_POINTER_DRAG, event))
+        needsDisplay = true
+        if wantsAutoscroll, autoscrollTimer == nil {
+            autoscrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                guard let self, let drag = self.lastDrag else { return }
+                if !self.session.select(self.pointer(UPAA_POINTER_AUTOSCROLL, drag)) { self.stopAutoscroll() }
+                self.needsDisplay = true
+            }
+        } else if !wantsAutoscroll {
+            stopAutoscroll()
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        stopAutoscroll()
+        _ = session.select(pointer(UPAA_POINTER_RELEASE, event))
+        needsDisplay = true
+    }
+
+    private func stopAutoscroll() {
+        autoscrollTimer?.invalidate()
+        autoscrollTimer = nil
+    }
+
+    /// The event as a selection pointer, in drawable pixels from the top-left.
+    private func pointer(_ kind: Int, _ event: NSEvent) -> UpaaPointer {
+        let location = convert(event.locationInWindow, from: nil)
+        let cell = renderer.cellSize
+        return UpaaPointer(
+            kind: UInt8(kind),
+            rectangle: event.modifierFlags.contains(.option),
+            x: location.x * scale,
+            y: (bounds.height - location.y) * scale,
+            time_ns: UInt64(event.timestamp * 1e9),
+            repeat_interval_ns: UInt64(NSEvent.doubleClickInterval * 1e9),
+            repeat_distance: Double(cell.width),
+            cols: UInt32(gridSize.cols), rows: UInt32(gridSize.rows),
+            cell_width: UInt32(cell.width), cell_height: UInt32(cell.height),
+            padding_left: UInt32(renderer.padding.horizontal), padding_top: UInt32(renderer.padding.top),
+            screen_height: UInt32(drawableSize.height))
+    }
+
+    @objc func copy(_ sender: Any?) {
+        guard let text = session.selectionText() else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    override func selectAll(_ sender: Any?) {
+        session.selectAll()
         needsDisplay = true
     }
 

@@ -71,12 +71,18 @@ pub fn build(frame: *Frame, state: vt.GhosttyRenderState, face: Face, atlas: *At
         if (vt.ghostty_render_state_row_get(frame.row_iter, vt.GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, @ptrCast(&frame.row_cells)) != vt.GHOSTTY_SUCCESS)
             continue;
 
+        var selected = std.mem.zeroes(vt.GhosttyRenderStateRowSelection);
+        selected.size = @sizeOf(vt.GhosttyRenderStateRowSelection);
+        const has_selection = vt.ghostty_render_state_row_get(frame.row_iter, vt.GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION, &selected) == vt.GHOSTTY_SUCCESS;
+
         var col: u16 = 0;
         while (vt.ghostty_render_state_row_cells_next(frame.row_cells)) : (col += 1) {
             if (n == out.len) break;
             var cell = frame.readCell(face, atlas, default_fg, default_bg);
             cell.col = col;
             cell.row = row;
+            // Selected cells are drawn with foreground and background swapped.
+            if (has_selection and col >= selected.start_x and col <= selected.end_x) std.mem.swap([4]u8, &cell.fg, &cell.bg);
             // Swap foreground and background to draw a block cursor. Distinguishing cursor shapes is not implemented yet.
             // While composing, the cursor is drawn after the composing string, so it is not drawn here.
             if (preedit.len == 0 and cursor_shown and cursor.viewport_x == col and cursor.viewport_y == row) {
@@ -226,4 +232,15 @@ test "cells carry glyphs, colors and the cursor" {
     try std.testing.expectEqual(@as(u32, 0), cells[14].flags);
     // The original cursor position is overwritten by the composing string (no block remains).
     try std.testing.expectEqual(a.bg, cells[11].bg);
+
+    // Selected cells have foreground and background swapped.
+    var selection = std.mem.zeroes(vt.GhosttySelection);
+    _ = vt.ghostty_terminal_grid_ref(terminal, .{ .tag = vt.GHOSTTY_POINT_TAG_ACTIVE, .value = .{ .coordinate = .{ .x = 0, .y = 0 } } }, &selection.start);
+    _ = vt.ghostty_terminal_grid_ref(terminal, .{ .tag = vt.GHOSTTY_POINT_TAG_ACTIVE, .value = .{ .coordinate = .{ .x = 1, .y = 0 } } }, &selection.end);
+    _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_SELECTION, &selection);
+    try std.testing.expectEqual(vt.GHOSTTY_SUCCESS, vt.ghostty_render_state_update(state, terminal));
+    _ = frame.build(state, face, &atlas, "", &cells);
+    try std.testing.expectEqual(a.fg, cells[0].bg);
+    try std.testing.expectEqual(a.bg, cells[0].fg);
+    try std.testing.expectEqual(a.bg, cells[2].fg);
 }

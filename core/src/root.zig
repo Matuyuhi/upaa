@@ -55,6 +55,20 @@ export fn upaa_session_scroll(session: *Session, rows: isize) void {
     session.scroll(.{ .tag = vt.GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA, .value = .{ .delta = rows } });
 }
 
+/// Feeds a mouse event to text selection. Returns the autoscroll direction (0 none, 1 up, 2 down).
+export fn upaa_session_select(session: *Session, pointer: *const Session.Pointer) u8 {
+    return session.select(pointer.*);
+}
+
+export fn upaa_session_select_all(session: *Session) void {
+    session.selectAll();
+}
+
+/// The selected text. Returns the full length (0 if nothing is selected); anything beyond cap is truncated. -1 on failure.
+export fn upaa_session_selection_text(session: *Session, out: [*]u8, cap: usize) isize {
+    return @intCast(session.selectionText(out[0..cap]) orelse return -1);
+}
+
 export fn upaa_session_key(session: *Session, event: *const Session.KeyEvent) void {
     session.key(event.*);
 }

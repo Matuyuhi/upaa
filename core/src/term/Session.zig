@@ -17,6 +17,8 @@ pty: Pty,
 terminal: vt.GhosttyTerminal,
 key_encoder: vt.GhosttyKeyEncoder,
 key_event: vt.GhosttyKeyEvent,
+/// Interprets mouse presses and drags as text selection (clicks, double and triple clicks, autoscroll).
+gesture: vt.GhosttySelectionGesture,
 mutex: std.c.pthread_mutex_t = .{},
 thread: std.Thread,
 /// Pipe to stop the read thread. Writing to it wakes poll.
@@ -63,6 +65,30 @@ pub const KeyEvent = extern struct {
     };
 };
 
+/// A mouse event for selecting text. Same layout as UpaaPointer in Sources/CUpaaCore.
+pub const Pointer = extern struct {
+    kind: Kind,
+    /// Option held: select a rectangle instead of running text.
+    rectangle: bool = false,
+    /// Position in drawable pixels from the top-left of the view.
+    x: f64,
+    y: f64,
+    /// Monotonic event time, and the longest gap and distance between clicks that still count as a double or triple click.
+    time_ns: u64 = 0,
+    repeat_interval_ns: u64 = 0,
+    repeat_distance: f64 = 0,
+    cols: u32,
+    rows: u32,
+    cell_width: u32,
+    cell_height: u32,
+    padding_left: u32 = 0,
+    padding_top: u32 = 0,
+    /// Height of the whole view in pixels. Dragging past it asks for autoscroll.
+    screen_height: u32,
+
+    pub const Kind = enum(u8) { press = 0, drag = 1, release = 2, autoscroll = 3 };
+};
+
 pub const Options = struct {
     size: Pty.Size,
     /// null means the login shell.
@@ -93,6 +119,10 @@ pub fn create(opts: Options) !*Session {
     if (vt.ghostty_key_event_new(null, &key_event) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
     errdefer vt.ghostty_key_event_free(key_event);
 
+    var gesture: vt.GhosttySelectionGesture = null;
+    if (vt.ghostty_selection_gesture_new(null, &gesture) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
+    errdefer vt.ghostty_selection_gesture_free(gesture, terminal);
+
     var stop_pipe: [2]c_int = undefined;
     if (c.pipe(&stop_pipe) != 0) return error.PipeFailed;
     errdefer for (stop_pipe) |fd| {
@@ -107,6 +137,7 @@ pub fn create(opts: Options) !*Session {
         .terminal = terminal,
         .key_encoder = key_encoder,
         .key_event = key_event,
+        .gesture = gesture,
         .thread = undefined,
         .stop_pipe = stop_pipe,
         .callbacks = opts.callbacks,
@@ -122,6 +153,7 @@ pub fn destroy(self: *Session) void {
     self.thread.join();
     self.pty.deinit();
     for (self.stop_pipe) |fd| _ = c.close(fd);
+    vt.ghostty_selection_gesture_free(self.gesture, self.terminal);
     vt.ghostty_key_event_free(self.key_event);
     vt.ghostty_key_encoder_free(self.key_encoder);
     vt.ghostty_terminal_free(self.terminal);
@@ -209,12 +241,11 @@ pub fn updateRenderState(self: *Session, state: vt.GhosttyRenderState) bool {
     return vt.ghostty_render_state_end_update(state) == vt.GHOSTTY_SUCCESS;
 }
 
-/// Writes the screen as plain text to out. Returns the full length.
+/// The live screen (without the scrollback) as plain text, written to out. Returns the full length.
 pub fn plainText(self: *Session, out: []u8) ?usize {
     self.lock();
     defer self.unlock();
 
-    // Only the live screen. The formatter would otherwise include the whole scrollback.
     var cols: u16 = 0;
     var rows: u16 = 0;
     _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_COLS, &cols);
@@ -222,11 +253,95 @@ pub fn plainText(self: *Session, out: []u8) ?usize {
     var screen = std.mem.zeroes(vt.GhosttySelection);
     if (vt.ghostty_terminal_grid_ref(self.terminal, activePoint(0, 0), &screen.start) != vt.GHOSTTY_SUCCESS) return null;
     if (vt.ghostty_terminal_grid_ref(self.terminal, activePoint(cols - 1, rows - 1), &screen.end) != vt.GHOSTTY_SUCCESS) return null;
+    return self.format(&screen, out);
+}
 
+/// The selected text, written to out. Returns the full length; 0 if nothing is selected.
+pub fn selectionText(self: *Session, out: []u8) ?usize {
+    self.lock();
+    defer self.unlock();
+    var selection: vt.GhosttySelection = undefined;
+    if (vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_SELECTION, &selection) != vt.GHOSTTY_SUCCESS) return 0;
+    return self.format(&selection, out);
+}
+
+pub fn selectAll(self: *Session) void {
+    self.lock();
+    defer self.unlock();
+    var selection: vt.GhosttySelection = undefined;
+    if (vt.ghostty_terminal_select_all(self.terminal, &selection) == vt.GHOSTTY_SUCCESS)
+        _ = vt.ghostty_terminal_set(self.terminal, vt.GHOSTTY_TERMINAL_OPT_SELECTION, &selection);
+}
+
+/// Feeds a mouse event to the selection gesture and makes its result the terminal's selection.
+/// Returns the autoscroll direction a drag asks for (GhosttySelectionGestureAutoscroll: 0 none, 1 up, 2 down).
+/// The caller sends autoscroll events from a timer while it is not 0.
+pub fn select(self: *Session, p: Pointer) u8 {
+    self.lock();
+    defer self.unlock();
+
+    const kind: vt.GhosttySelectionGestureEventType = switch (p.kind) {
+        .press => vt.GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_PRESS,
+        .drag => vt.GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_DRAG,
+        .release => vt.GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_RELEASE,
+        .autoscroll => vt.GHOSTTY_SELECTION_GESTURE_EVENT_TYPE_AUTOSCROLL_TICK,
+    };
+    var event: vt.GhosttySelectionGestureEvent = null;
+    if (vt.ghostty_selection_gesture_event_new(null, &event, kind) != vt.GHOSTTY_SUCCESS) return 0;
+    defer vt.ghostty_selection_gesture_event_free(event);
+
+    // The cell under the pointer, clamped to the grid.
+    var cell: vt.GhosttyPointCoordinate = .{ .x = @intCast(cellIndex(p.x, p.padding_left, p.cell_width, p.cols)), .y = cellIndex(p.y, p.padding_top, p.cell_height, p.rows) };
+    var ref: vt.GhosttyGridRef = undefined;
+    const point: vt.GhosttyPoint = .{ .tag = vt.GHOSTTY_POINT_TAG_VIEWPORT, .value = .{ .coordinate = cell } };
+    const has_ref = vt.ghostty_terminal_grid_ref(self.terminal, point, &ref) == vt.GHOSTTY_SUCCESS;
+    var position: vt.GhosttySurfacePosition = .{ .x = p.x, .y = p.y };
+    var geometry: vt.GhosttySelectionGestureGeometry = .{ .columns = p.cols, .cell_width = p.cell_width, .padding_left = p.padding_left, .screen_height = p.screen_height };
+    var time_ns = p.time_ns;
+    var repeat_interval_ns = p.repeat_interval_ns;
+    var repeat_distance = p.repeat_distance;
+    var rectangle = p.rectangle;
+
+    if (has_ref and p.kind != .autoscroll) _ = vt.ghostty_selection_gesture_event_set(event, vt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_REF, &ref);
+    if (p.kind != .release) _ = vt.ghostty_selection_gesture_event_set(event, vt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_POSITION, &position);
+    if (p.kind == .press) {
+        _ = vt.ghostty_selection_gesture_event_set(event, vt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_TIME_NS, &time_ns);
+        _ = vt.ghostty_selection_gesture_event_set(event, vt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_REPEAT_INTERVAL_NS, &repeat_interval_ns);
+        _ = vt.ghostty_selection_gesture_event_set(event, vt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_REPEAT_DISTANCE, &repeat_distance);
+    }
+    if (p.kind == .drag or p.kind == .autoscroll) {
+        _ = vt.ghostty_selection_gesture_event_set(event, vt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_GEOMETRY, &geometry);
+        _ = vt.ghostty_selection_gesture_event_set(event, vt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_RECTANGLE, &rectangle);
+    }
+    if (p.kind == .autoscroll) _ = vt.ghostty_selection_gesture_event_set(event, vt.GHOSTTY_SELECTION_GESTURE_EVENT_OPT_VIEWPORT, &cell);
+
+    var selection: vt.GhosttySelection = undefined;
+    switch (vt.ghostty_selection_gesture_event(self.gesture, self.terminal, event, &selection)) {
+        vt.GHOSTTY_SUCCESS => _ = vt.ghostty_terminal_set(self.terminal, vt.GHOSTTY_TERMINAL_OPT_SELECTION, &selection),
+        // A plain click selects nothing and clears the old selection.
+        vt.GHOSTTY_NO_VALUE => if (p.kind == .press) {
+            _ = vt.ghostty_terminal_set(self.terminal, vt.GHOSTTY_TERMINAL_OPT_SELECTION, null);
+        },
+        else => {},
+    }
+
+    var autoscroll: vt.GhosttySelectionGestureAutoscroll = vt.GHOSTTY_SELECTION_GESTURE_AUTOSCROLL_NONE;
+    _ = vt.ghostty_selection_gesture_get(self.gesture, self.terminal, vt.GHOSTTY_SELECTION_GESTURE_DATA_AUTOSCROLL, &autoscroll);
+    return @intCast(autoscroll);
+}
+
+fn cellIndex(px: f64, padding: u32, cell: u32, count: u32) u32 {
+    const offset = px - @as(f64, @floatFromInt(padding));
+    if (offset <= 0 or cell == 0 or count == 0) return 0;
+    return @min(@as(u32, @intFromFloat(offset / @as(f64, @floatFromInt(cell)))), count - 1);
+}
+
+/// Writes the text inside selection as plain text to out. The caller holds the lock.
+fn format(self: *Session, selection: *const vt.GhosttySelection, out: []u8) ?usize {
     var formatter: vt.GhosttyFormatter = null;
     if (vt.ghostty_formatter_terminal_new(null, &formatter, self.terminal) != vt.GHOSTTY_SUCCESS) return null;
     defer vt.ghostty_formatter_free(formatter);
-    _ = vt.ghostty_formatter_set(formatter, vt.GHOSTTY_FORMATTER_OPT_SELECTION, &screen);
+    _ = vt.ghostty_formatter_set(formatter, vt.GHOSTTY_FORMATTER_OPT_SELECTION, selection);
 
     var buf: [*c]u8 = null;
     var n: usize = 0;
@@ -407,4 +522,53 @@ test "scrollback keeps history, and input returns to the live screen" {
     _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_SCROLLBAR, &bar);
     self.unlock();
     try std.testing.expectEqual(bar.total - bar.len, bar.offset);
+}
+
+fn pointerAt(kind: Pointer.Kind, col: u32, row: u32, time_ms: u64) Pointer {
+    // A 10 x 20 pixel cell on an 80 x 24 grid, pointing at the middle of the cell.
+    return .{
+        .kind = kind,
+        .x = @floatFromInt(col * 10 + 5),
+        .y = @floatFromInt(row * 20 + 10),
+        .time_ns = time_ms * std.time.ns_per_ms,
+        .repeat_interval_ns = 500 * std.time.ns_per_ms,
+        .repeat_distance = 10,
+        .cols = 80,
+        .rows = 24,
+        .cell_width = 10,
+        .cell_height = 20,
+        .screen_height = 480,
+    };
+}
+
+test "mouse gestures select words, ranges and everything" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "printf 'hello world\\nsecond line\\n'; read _" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+    try self.waitForText("second line", &out);
+
+    try std.testing.expectEqual(@as(?usize, 0), self.selectionText(&out));
+
+    // A double click selects the word under the pointer.
+    _ = self.select(pointerAt(.press, 7, 0, 1000));
+    _ = self.select(pointerAt(.release, 7, 0, 1000));
+    _ = self.select(pointerAt(.press, 7, 0, 1100));
+    _ = self.select(pointerAt(.release, 7, 0, 1100));
+    try std.testing.expectEqualStrings("world", out[0..self.selectionText(&out).?]);
+
+    // Dragging selects from the press to the pointer, across lines. libghostty-vt includes the cell under the
+    // pointer only once the pointer is past its middle, so ending in the middle of cell 6 selects "second".
+    _ = self.select(pointerAt(.press, 0, 0, 5000));
+    _ = self.select(pointerAt(.drag, 6, 1, 5000));
+    _ = self.select(pointerAt(.release, 6, 1, 5000));
+    try std.testing.expectEqualStrings("hello world\nsecond", out[0..self.selectionText(&out).?]);
+
+    // A plain click clears the selection.
+    _ = self.select(pointerAt(.press, 3, 3, 9000));
+    _ = self.select(pointerAt(.release, 3, 3, 9000));
+    try std.testing.expectEqual(@as(?usize, 0), self.selectionText(&out));
+
+    self.selectAll();
+    const all = out[0..self.selectionText(&out).?];
+    try std.testing.expect(std.mem.indexOf(u8, all, "hello world\nsecond line") != null);
 }

@@ -47,6 +47,37 @@ typedef struct {
 enum { UPAA_KEY_RELEASE = 0, UPAA_KEY_PRESS = 1, UPAA_KEY_REPEAT = 2 };
 enum { UPAA_MOD_SHIFT = 1 << 0, UPAA_MOD_CTRL = 1 << 1, UPAA_MOD_ALT = 1 << 2, UPAA_MOD_SUPER = 1 << 3 };
 
+// A mouse event for selecting text.
+typedef struct {
+    // UPAA_POINTER_*
+    uint8_t kind;
+    // Option held: select a rectangle instead of running text.
+    bool rectangle;
+    // Position in drawable pixels from the top-left of the view.
+    double x;
+    double y;
+    // Monotonic event time, and the longest gap and distance (pixels) between clicks that still count as a double or triple click.
+    uint64_t time_ns;
+    uint64_t repeat_interval_ns;
+    double repeat_distance;
+    uint32_t cols;
+    uint32_t rows;
+    uint32_t cell_width;
+    uint32_t cell_height;
+    uint32_t padding_left;
+    uint32_t padding_top;
+    // Height of the whole view in pixels. Dragging past it asks for autoscroll.
+    uint32_t screen_height;
+} UpaaPointer;
+
+enum { UPAA_POINTER_PRESS = 0, UPAA_POINTER_DRAG = 1, UPAA_POINTER_RELEASE = 2, UPAA_POINTER_AUTOSCROLL = 3 };
+
+// Feeds a mouse event to text selection and makes the result the terminal's selection.
+// Returns the autoscroll direction a drag asks for (0 none, 1 up, 2 down); send UPAA_POINTER_AUTOSCROLL from a timer while it is not 0.
+uint8_t upaa_session_select(UpaaSession *session, const UpaaPointer *pointer);
+void upaa_session_select_all(UpaaSession *session);
+// The selected text (UTF-8). Returns the full length (0 if nothing is selected); anything beyond cap is truncated. -1 on failure.
+ptrdiff_t upaa_session_selection_text(UpaaSession *session, uint8_t *out, size_t cap);
 // Moves the view through the scrollback by rows (up is negative). Writing input moves it back to the bottom.
 void upaa_session_scroll(UpaaSession *session, ptrdiff_t rows);
 // Converts key input into a byte sequence matching the terminal's current mode and sends it to the shell.

@@ -63,6 +63,25 @@ final class TerminalSession {
         }
     }
 
+    /// Feeds a mouse event to text selection. Returns true while a drag past the top or bottom edge wants autoscroll ticks.
+    func select(_ pointer: UpaaPointer) -> Bool {
+        var pointer = pointer
+        return upaa_session_select(handle, &pointer) != 0
+    }
+
+    func selectAll() {
+        upaa_session_select_all(handle)
+    }
+
+    /// The selected text, or nil if nothing is selected.
+    func selectionText() -> String? {
+        let n = upaa_session_selection_text(handle, nil, 0)
+        guard n > 0 else { return nil }
+        var out = [UInt8](repeating: 0, count: n)
+        _ = upaa_session_selection_text(handle, &out, out.count)
+        return String(decoding: out, as: UTF8.self)
+    }
+
     /// Moves the view through the scrollback by rows (up is negative).
     func scroll(rows: Int) {
         upaa_session_scroll(handle, rows)

@@ -69,6 +69,13 @@ public enum UpaaApp {
         appItem.submenu = NSMenu()
         appItem.submenu?.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         mainMenu.addItem(appItem)
+
+        // The actions go to the first responder (TerminalView).
+        let editItem = NSMenuItem()
+        editItem.submenu = NSMenu(title: "Edit")
+        editItem.submenu?.addItem(withTitle: "Copy", action: #selector(TerminalView.copy(_:)), keyEquivalent: "c")
+        editItem.submenu?.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
+        mainMenu.addItem(editItem)
         return mainMenu
     }
 }
