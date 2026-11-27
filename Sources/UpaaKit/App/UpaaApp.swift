@@ -90,6 +90,12 @@ public enum UpaaApp {
         editItem.submenu?.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
         mainMenu.addItem(editItem)
 
+        let viewItem = NSMenuItem()
+        viewItem.submenu = NSMenu(title: "View")
+        viewItem.submenu?.addItem(withTitle: "Tabs on the Side or Top", action: #selector(TabbedWindow.toggleTabLayout(_:)), keyEquivalent: "b")
+        viewItem.submenu?.addItem(withTitle: "Changes Panel", action: #selector(TabbedWindow.toggleSidePanel(_:)), keyEquivalent: "j")
+        mainMenu.addItem(viewItem)
+
         // upaa draws its own tabs, so AppKit's window tabs (and the menu items it adds for them) are turned off.
         NSWindow.allowsAutomaticWindowTabbing = false
         let windowItem = NSMenuItem()
