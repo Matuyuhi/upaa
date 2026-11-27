@@ -30,11 +30,16 @@ final class Renderer {
     /// Seconds after the last draw until the mascot changes, or nil if nothing waits on it.
     private(set) var mascotDelay: TimeInterval?
 
+    /// How much of the default background color covers what is behind the view (0 to 1).
+    let backgroundOpacity: Double
+
     /// fontSize is in points; scale is the screen scale factor (2 on Retina). mascot draws the axolotl behind the text.
-    init(device: MTLDevice, fontName: String, fontSize: Double, scale: Double, mascot: Bool = false) throws {
+    init(device: MTLDevice, fontName: String, fontSize: Double, scale: Double, mascot: Bool = false,
+         backgroundOpacity: Double = 1) throws {
         guard let handle = upaa_renderer_new(fontName, fontSize * scale, mascot) else { throw SetupError.font }
         self.handle = handle
         self.device = device
+        self.backgroundOpacity = backgroundOpacity
         let metrics = upaa_renderer_metrics(handle)
         cellSize = (Int(metrics.cell_width), Int(metrics.cell_height))
         underline = SIMD2(Float(metrics.underline_offset), Float(metrics.underline_thickness))
@@ -125,9 +130,11 @@ final class Renderer {
         uploadAtlasIfNeeded(generation: frame.atlas_generation)
         mascotDelay = frame.mascot_next_ms > 0 ? Double(frame.mascot_next_ms) / 1000 : nil
 
+        // Colors are premultiplied by alpha, as Core Animation composites them.
         let bg = frame.background
+        let alpha = backgroundOpacity
         pass.colorAttachments[0].clearColor = MTLClearColor(
-            red: Double(bg.0) / 255, green: Double(bg.1) / 255, blue: Double(bg.2) / 255, alpha: 1)
+            red: Double(bg.0) / 255 * alpha, green: Double(bg.1) / 255 * alpha, blue: Double(bg.2) / 255 * alpha, alpha: alpha)
         pass.colorAttachments[0].loadAction = .clear
         let cursor = frame.cursor_visible ? (col: Int(frame.cursor_col), row: Int(frame.cursor_row)) : nil
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return cursor }
@@ -139,7 +146,8 @@ final class Renderer {
             cell: SIMD2(Float(cellSize.width), Float(cellSize.height)),
             atlas: SIMD2(repeating: Float(atlasTexture.width)),
             origin: SIMD2(Float(padding.horizontal), Float(padding.top)),
-            underline: underline)
+            underline: underline,
+            background: SIMD4(Float(bg.0) / 255, Float(bg.1) / 255, Float(bg.2) / 255, Float(alpha)))
         encoder.setVertexBuffer(cellBuffer, offset: 0, index: 0)
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
         encoder.setFragmentTexture(atlasTexture, index: 0)
@@ -183,5 +191,6 @@ final class Renderer {
         var atlas: SIMD2<Float>
         var origin: SIMD2<Float>
         var underline: SIMD2<Float>
+        var background: SIMD4<Float>
     }
 }

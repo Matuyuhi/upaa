@@ -20,6 +20,8 @@ typedef struct {
     const char *font_family;
     // Points.
     double font_size;
+    // How much of the default background color covers what is behind the window (0 to 1).
+    double background_opacity;
     // Cells.
     uint16_t window_width;
     uint16_t window_height;

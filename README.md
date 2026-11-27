@@ -69,6 +69,8 @@ window-width = 100
 window-height = 30
 foreground = #cdd6f4
 background = #1e1e2e
+# how much the background covers what is behind the window, 0 to 1 (default 0.85)
+background-opacity = 0.85
 # one of the 256 colors; repeat the line for others
 palette = 1=#f38ba8
 ```

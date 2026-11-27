@@ -62,7 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeTerminal(cwd: String? = nil) -> TerminalView? {
         let scale = scale
         func makeRenderer(device: MTLDevice) -> Renderer? {
-            try? Renderer(device: device, fontName: fontFamily, fontSize: config.fontSize, scale: scale, mascot: true)
+            try? Renderer(device: device, fontName: fontFamily, fontSize: config.fontSize, scale: scale, mascot: true,
+                         backgroundOpacity: config.backgroundOpacity)
         }
         guard let device = MTLCreateSystemDefaultDevice(),
               let renderer = makeRenderer(device: device) ?? {

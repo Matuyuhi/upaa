@@ -24,6 +24,8 @@ struct Uniforms {
     float2 origin_px;
     // From the top edge of the cell to the top edge of the underline (x), and the underline thickness (y).
     float2 underline_px;
+    // The default background color, with the opacity it is drawn at in alpha.
+    float4 background;
 };
 
 struct Varyings {
@@ -55,7 +57,10 @@ vertex Varyings background_vertex(uint vertex_id [[vertex_id]],
     float2 px = u.origin_px + (float2(cell.pos) + corner(vertex_id)) * u.cell_px;
     Varyings out;
     out.position = clip(px, u.viewport_px);
-    out.color = float4(cell.bg) / 255.0;
+    // A cell on the default background lets what is behind the view show through. Premultiplied by alpha.
+    float4 bg = float4(cell.bg) / 255.0;
+    float alpha = all(abs(bg.rgb - u.background.rgb) < 0.5 / 255.0) ? u.background.a : bg.a;
+    out.color = float4(bg.rgb * alpha, alpha);
     out.uv = float2(0.0);
     out.cell_y = corner(vertex_id).y * u.cell_px.y;
     bool underlined = (cell.flags & cell_underline) != 0;

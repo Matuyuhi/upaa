@@ -75,6 +75,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
     /// A tab that comes back into the window needs a frame, since it was not drawn while it was hidden.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        layer?.isOpaque = renderer.backgroundOpacity >= 1
         if window != nil { redraw() }
     }
 

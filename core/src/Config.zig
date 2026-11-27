@@ -12,6 +12,9 @@ const vt = @import("ghostty");
 font_family: [129]u8 = fixed("Menlo"),
 /// Points.
 font_size: f64 = 13,
+/// How much of the default background color covers what is behind the window (0 to 1). Cells with a color of their
+/// own stay opaque. Below 1 by default, for the glass look of design A3.
+background_opacity: f64 = 0.85,
 /// Cells.
 window_width: u16 = 80,
 window_height: u16 = 24,
@@ -26,6 +29,7 @@ problem: [80]u8 = @splat(0),
 pub const Values = extern struct {
     font_family: [*:0]const u8,
     font_size: f64,
+    background_opacity: f64,
     window_width: u16,
     window_height: u16,
     /// The first line that could not be read, or null.
@@ -58,6 +62,7 @@ pub fn values(config: *const Config) Values {
     return .{
         .font_family = config.font_family[0 .. config.font_family.len - 1 :0].ptr,
         .font_size = config.font_size,
+        .background_opacity = config.background_opacity,
         .window_width = config.window_width,
         .window_height = config.window_height,
         .problem = if (config.problem[0] == 0) null else config.problem[0 .. config.problem.len - 1 :0].ptr,
@@ -88,6 +93,10 @@ fn set(config: *Config, key: []const u8, value: []const u8) error{ UnknownKey, I
         const size = std.fmt.parseFloat(f64, value) catch return error.InvalidValue;
         if (!(size >= 4 and size <= 200)) return error.InvalidValue;
         config.font_size = size;
+    } else if (std.mem.eql(u8, key, "background-opacity")) {
+        const opacity = std.fmt.parseFloat(f64, value) catch return error.InvalidValue;
+        if (!(opacity >= 0 and opacity <= 1)) return error.InvalidValue;
+        config.background_opacity = opacity;
     } else if (std.mem.eql(u8, key, "window-width")) {
         config.window_width = try cells(value, 10);
     } else if (std.mem.eql(u8, key, "window-height")) {
@@ -135,6 +144,7 @@ test "defaults" {
     const v = config.values();
     try std.testing.expectEqualStrings("Menlo", std.mem.span(v.font_family));
     try std.testing.expectEqual(@as(f64, 13), v.font_size);
+    try std.testing.expectEqual(@as(f64, 0.85), v.background_opacity);
     try std.testing.expectEqual(@as(u16, 80), v.window_width);
     try std.testing.expectEqual(@as(u16, 24), v.window_height);
     try std.testing.expect(v.problem == null);
@@ -145,6 +155,7 @@ test "settings, and the first line that cannot be read" {
         \\# comment
         \\font-family = "JetBrains Mono"
         \\font-size = 14.5
+        \\background-opacity = 1
         \\window-width = 100
         \\window-height=30
         \\
@@ -156,12 +167,13 @@ test "settings, and the first line that cannot be read" {
     const v = config.values();
     try std.testing.expectEqualStrings("JetBrains Mono", std.mem.span(v.font_family));
     try std.testing.expectEqual(@as(f64, 14.5), v.font_size);
+    try std.testing.expectEqual(@as(f64, 1), v.background_opacity);
     try std.testing.expectEqual(@as(u16, 100), v.window_width);
     try std.testing.expectEqual(@as(u16, 30), v.window_height);
     try std.testing.expectEqual(vt.GhosttyColorRgb{ .r = 0x1e, .g = 0x1e, .b = 0x2e }, config.background.?);
     try std.testing.expectEqual(vt.GhosttyColorRgb{ .r = 0xff, .g = 0, .b = 0 }, config.palette[1].?);
     try std.testing.expect(config.palette[2] == null);
-    try std.testing.expectEqualStrings("config line 9: unknown key", std.mem.span(v.problem.?));
+    try std.testing.expectEqualStrings("config line 10: unknown key", std.mem.span(v.problem.?));
 
     const bad = parse("window-width = 3\nwindow-width = 120\nno equals sign");
     try std.testing.expectEqual(@as(u16, 120), bad.window_width);
