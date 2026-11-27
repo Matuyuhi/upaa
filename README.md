@@ -91,7 +91,7 @@ sh scripts/test.sh               # run all tests
 
 The version lives only in `.version` in `build.zig.zon`. To release, run the `release` workflow in GitHub Actions; it creates the tag and the release, then bumps `main` to the next patch version. Run the `bump-version` workflow with `minor` or `major` to change that.
 
-Project conventions are in `CLAUDE.md` and the design history is in `docs/handoff.md` (both in Japanese).
+Project conventions are in `CLAUDE.md`. Progress and remaining work are tracked in [Issues](https://github.com/Matuyuhi/upaa/issues).
 
 ## License
 

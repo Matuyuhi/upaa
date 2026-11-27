@@ -2,12 +2,13 @@
 
 A homemade terminal emulator for macOS only. Written in Swift (AppKit) and Zig. Terminal emulation itself is left to libghostty-vt (stable C ABI). The goal is to be usable for daily work.
 
-The background, confirmed facts, unconfirmed items, and milestones are in `docs/handoff.md`. Read it before starting.
+Progress, remaining work, and unconfirmed items are tracked in GitHub Issues (labels `feature`, `investigation`, `needs-mac`, `design`, and `M5` / `M6` for the milestone). Read the related issue before starting, link a PR to it with `Closes #N`, and open an issue for new remaining work or unconfirmed items instead of writing them in a file. The approved screen design (A3) is #22. The design notes up to 2026-11-27 are `docs/handoff.md` at commit e9c7a16 in the history.
 
 ## Decided
 
 - Target is macOS 13 or later on Apple Silicon (arm64) only. No cross-platform support.
 - The language is a mix of Swift and Zig. UI, IME, and Metal calls are in Swift. The rest of the core (PTY, libghostty-vt calls, building drawing data, glyph cache) is in Zig. Zig is 0.17.x.
+- Zig was chosen because the user wants to write in it. If the mix costs noticeable performance or effort, say so plainly; the fallback is a core in C.
 - Build uses SwiftPM and `scripts/build-app.sh` (`zig build` → `swift build` → `build/upaa.app`).
 - The prebuilt libghostty-vt XCFramework is fetched by `scripts/fetch-ghostty-vt.sh`. It is not included in the repository.
 - Use libghostty-vt 1.0.x. The full libghostty, including drawing and fonts (such as GhosttyKit), is not used because its API is not yet stable.
@@ -19,6 +20,7 @@ The background, confirmed facts, unconfirmed items, and milestones are in `docs/
 - `core/src/` — Zig core. Functions exported to C (`export fn`) go only in `root.zig`. The implementation goes in folders by role.
   - `c/` headers imported with translate-c, `term/` terminal session (PTY, read thread, libghostty-vt), `font/` font and glyph atlas, `render/` building cell data for Metal.
 - `Sources/CUpaaCore/` — C headers for the Zig functions. Edit them together with `root.zig`.
+- Swift and Zig cross per frame or per chunk read from the PTY, never per cell. Zig writes the cell data straight into the Metal buffer Swift passes in. Callbacks from Zig to Swift are only for rare events (title, bell, redraw request).
 - `Sources/UpaaKit/` — Swift implementation (`App/`, `Terminal/`, `Render/`). `Sources/upaa/` only launches the app.
 - `Shaders/` — Metal shaders. `scripts/build-app.sh` compiles them and puts them into the `.app`. The layout of cell data must match in three places: `core/src/render/Cell.zig`, the C header `UpaaCell`, and the shader `Cell`.
 - To check drawing, write one frame to a PNG with `build/upaa.app/Contents/MacOS/upaa --snapshot <png> [--input <string>]` and view it.
@@ -44,7 +46,7 @@ Do not proceed by just piling on code. Avoid increasing the amount of code itsel
 
 ## Rules to follow
 
-- Function names and usage for libghostty-vt follow the header at tag `vt-1.0.2` (`include/ghostty/vt/`) and `example/c-vt-*`, which are authoritative. Ghostling is pinned to a commit from before 1.0 and calls functions that do not exist in 1.0.2.
+- Function names and usage for libghostty-vt follow the header at tag `vt-1.0.2` (`include/ghostty/vt/`) and `example/c-vt-*`, which are authoritative (docs: https://lib.ghostty.org/vt/). Ghostling is pinned to a commit from before 1.0 and calls functions that do not exist in 1.0.2.
 - In reports, separate confirmed facts from guesses. Do not write that something "works" if it was not run.
 - For operations involving external downloads, publishing, deletion, or overwriting, show the target and impact and get the user's confirmation before doing them.
 - Do not have the user enter credentials such as private keys or tokens.
