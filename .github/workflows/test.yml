@@ -27,10 +27,6 @@ jobs:
     # Snapshots are compared, so the macOS version is pinned to keep font rendering the same (xcode-27 is macOS 27).
     # When upgrading, look at the failing comparison images before regenerating the baselines (tests/snapshots/).
     runs-on: xcode-27
-    permissions:
-      contents: read
-      # To post the launch screenshots on the pull request.
-      pull-requests: write
     env:
       # The image default is Xcode 27.1. Use 27.2, the same as local.
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
@@ -114,26 +110,38 @@ jobs:
           path: build/screenshots/*.png
           if-no-files-found: ignore
 
-      # Show the screenshots on the pull request. One comment, edited on each push. --attach needs gh 2.99 or later.
-      # A pull request from a fork gets a read-only token, so it is skipped there.
-      - name: Post the launch screenshots
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-          SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          gh --version
-          dir=build/screenshots
-          printf '%s\n' "Launch screenshots for $SHA" '' \
-            "Without a config file: ![default]($dir/default.png)" '' \
-            "With a config file: ![config]($dir/config.png)" > "$dir/comment.md"
-          gh pr comment "$PR" --edit-last --create-if-none --body-file "$dir/comment.md" \
-            --attach "$dir/default.png" --attach "$dir/config.png"
-
       - name: Keep the exported screens
         if: failure()
         uses: actions/upload-artifact@v7.0.2
         with:
           name: snapshots
           path: build/snapshots
+
+  # Show the launch screenshots on the pull request, in one comment edited on each push.
+  # A separate job, so the job that builds and runs the pull request's code keeps a read-only token.
+  # Uploading an attachment needs write access, and a pull request from a fork never gets it, so it is skipped there.
+  screenshots-comment:
+    needs: test
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      # --attach needs gh 2.99 or later.
+      - name: Post the launch screenshots
+        run: |
+          gh --version
+          gh run download "$GITHUB_RUN_ID" --name launch-screenshots --dir shots
+          printf '%s\n' "Launch screenshots for $SHA" '' \
+            'Without a config file: ![default](shots/default.png)' '' \
+            'With a config file: ![config](shots/config.png)' > comment.md
+          gh pr comment "$PR" --edit-last --create-if-none --body-file comment.md \
+            --attach shots/default.png --attach shots/config.png
