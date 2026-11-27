@@ -10,7 +10,39 @@ permissions:
   contents: read
 
 jobs:
+  # Claude writes the release notes from the commits since the previous tag.
+  # It runs in its own job so that it holds a read-only token, not the one that creates the Release.
+  notes:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      notes: ${{ steps.claude.outputs.structured_output }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      # A failure here must not stop the release: it then goes out with only GitHub's generated notes.
+      - uses: anthropics/claude-code-action@v1.0.290
+        id: claude
+        continue-on-error: true
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          claude_args: >-
+            --json-schema '{"type":"object","properties":{"notes":{"type":"string"}},"required":["notes"],"additionalProperties":false}'
+          prompt: |
+            Write the release notes for the next release of upaa, a terminal emulator for macOS.
+            The changes are the commits after the latest tag (`git describe --tags --abbrev=0`) up to HEAD.
+            Read their messages, and read the diff where a message does not say what changed for users.
+            Write for people who use upaa: say what changed for them, in plain English, as a short Markdown list.
+            Group items under "### Added", "### Changed" and "### Fixed", leaving out a heading that has no items.
+            Leave out commits that change nothing for users (version bumps, CI, tests, refactoring).
+            Return the notes alone in `notes`, with no title and no preamble. Do not change any file.
+
   release:
+    needs: notes
     # Do not release from anything other than main.
     if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
@@ -69,10 +101,18 @@ jobs:
           subject-path: dist/upaa-macos-arm64.zip
 
       # The tag is placed on the commit this workflow runs on.
+      # GitHub's generated notes (the "Full Changelog" link) are appended after Claude's notes.
       - name: Create the tag and Release
+        env:
+          NOTES: ${{ needs.notes.outputs.notes }}
         run: |
+          if printf '%s' "$NOTES" | jq -er '.notes | select(test("\\S"))' > "$RUNNER_TEMP/notes.md"; then
+            set -- --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            set --
+          fi
           gh release create "${{ steps.version.outputs.tag }}" dist/upaa-macos-arm64.zip dist/SHA256SUMS \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes "$@"
 
   # Move main to the next patch version, so the next release does not collide with this one.
   bump-version:
