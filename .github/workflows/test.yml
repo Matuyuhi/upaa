@@ -71,8 +71,8 @@ jobs:
       - name: Test
         run: sh scripts/test.sh
 
-      # Open the real window and photograph the screen, without and with a config file.
-      # Only a launch failure or a crash fails here; the pictures are kept to look at, not compared.
+      # Open the real window and photograph it, without and with a config file.
+      # Only a launch failure, a crash or a missing window fails here; the pictures are kept to look at, not compared.
       - name: Launch screenshots
         env:
           UPAA_NO_UPDATE_CHECK: "1"
@@ -80,12 +80,35 @@ jobs:
           dir=build/screenshots
           mkdir -p "$dir/default/upaa" "$dir/config/upaa"
           printf '%s\n' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' > "$dir/config/upaa/config"
+          # Prints the id of the window owned by the given process, to photograph that window alone.
+          cat > "$dir/window.swift" <<'SWIFT'
+          import CoreGraphics
+          let pid = Int(CommandLine.arguments[1])!
+          let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+          if let id = windows.first(where: { $0["kCGWindowOwnerPID"] as? Int == pid && $0["kCGWindowLayer"] as? Int == 0 })?["kCGWindowNumber"] {
+              print(id)
+          }
+          SWIFT
           for name in default config; do
             XDG_CONFIG_HOME="$PWD/$dir/$name" build/upaa.app/Contents/MacOS/upaa &
             pid=$!
             sleep 5
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
-            screencapture -x "$dir/$name.png"
+            id="$(swift "$dir/window.swift" "$pid")"
+            [ -n "$id" ] || { echo "upaa opened no window ($name)"; exit 1; }
+            screencapture -x -o -l "$id" "$dir/$name.png"
+            sips -g pixelWidth -g pixelHeight "$dir/$name.png"; wc -c "$dir/$name.png"
+            swift - "$dir/$name.png" <<'SWIFT'
+          import CoreGraphics; import ImageIO; import Foundation
+          let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: CommandLine.arguments[1]) as CFURL, nil)!
+          let img = CGImageSourceCreateImageAtIndex(src, 0, nil)!
+          var px = [UInt8](repeating: 0, count: 4)
+          let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+          for (fx, fy) in [(0.1, 0.1), (0.5, 0.5), (0.9, 0.2)] {
+              ctx.draw(img, in: CGRect(x: -CGFloat(img.width) * fx, y: -CGFloat(img.height) * fy, width: CGFloat(img.width), height: CGFloat(img.height)))
+              print("DIAG pixel", fx, fy, String(format: "#%02x%02x%02x", px[0], px[1], px[2]))
+          }
+          SWIFT
             kill "$pid"
             wait "$pid" || true
           done
