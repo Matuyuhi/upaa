@@ -30,8 +30,9 @@ Works today:
 - Pasting with Cmd-V, asking first when the text could run a command
 - 10 MB of scrollback, scrolled with the wheel or trackpad
 - Mouse input for programs that ask for it (vim with `mouse=a`, htop); hold Shift to select instead
+- A config file for the font, colors and window size (see Configuration)
 
-Not yet: a config file, tabs and splits, search.
+Not yet: tabs and splits, search.
 
 ## Install
 
