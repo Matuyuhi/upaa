@@ -47,10 +47,14 @@ typedef struct {
 enum { UPAA_KEY_RELEASE = 0, UPAA_KEY_PRESS = 1, UPAA_KEY_REPEAT = 2 };
 enum { UPAA_MOD_SHIFT = 1 << 0, UPAA_MOD_CTRL = 1 << 1, UPAA_MOD_ALT = 1 << 2, UPAA_MOD_SUPER = 1 << 3 };
 
-// A mouse event for selecting text.
+// A mouse event, for selecting text or for reporting to the program.
 typedef struct {
     // UPAA_POINTER_*
     uint8_t kind;
+    // GhosttyMouseButton (1 left, 2 right, 3 middle, 4 wheel up, 5 wheel down). Only used for reporting.
+    uint8_t button;
+    // UPAA_MOD_* added together. Only used for reporting.
+    uint8_t mods;
     // Option held: select a rectangle instead of running text.
     bool rectangle;
     // Position in drawable pixels from the top-left of the view.
@@ -66,7 +70,10 @@ typedef struct {
     uint32_t cell_height;
     uint32_t padding_left;
     uint32_t padding_top;
-    // Height of the whole view in pixels. Dragging past it asks for autoscroll.
+    uint32_t padding_right;
+    uint32_t padding_bottom;
+    // Size of the whole view in pixels. Dragging past the top or bottom asks for autoscroll.
+    uint32_t screen_width;
     uint32_t screen_height;
 } UpaaPointer;
 
@@ -79,6 +86,11 @@ void upaa_session_select_all(UpaaSession *session);
 // The selected text (UTF-8). Returns the full length (0 if nothing is selected); anything beyond cap is truncated. -1 on failure.
 ptrdiff_t upaa_session_selection_text(UpaaSession *session, uint8_t *out, size_t cap);
 enum { UPAA_PASTE_PASTED = 0, UPAA_PASTE_REJECTED = 1, UPAA_PASTE_FAILED = 2 };
+// Whether the program asked for mouse events (vim with mouse=a, htop, ...). If so, send clicks and the wheel to
+// upaa_session_report_mouse instead of selecting and scrolling, unless Shift is held.
+bool upaa_session_wants_mouse(UpaaSession *session);
+// Sends a mouse event to the program in the format it asked for. A wheel step is a press of button 4 (up) or 5 (down).
+void upaa_session_report_mouse(UpaaSession *session, const UpaaPointer *pointer);
 // Pastes text into the shell, framed for the terminal's current mode (bracketed paste when the program asks for it).
 // Returns UPAA_PASTE_REJECTED for text that could run a command by itself (such as a line break outside bracketed
 // paste) unless allow_unsafe; ask the user, then call again with allow_unsafe.

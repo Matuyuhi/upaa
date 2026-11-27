@@ -79,18 +79,31 @@ final class TerminalView: MTKView, MTKViewDelegate {
         let whole = pendingScroll.rounded(.towardZero)
         guard whole != 0 else { return }
         pendingScroll -= whole
+        if reportsMouse(event) {
+            for _ in 0..<Int(abs(whole)) {
+                session.reportMouse(pointer(UPAA_POINTER_PRESS, event, button: whole > 0 ? 4 : 5))
+            }
+            return
+        }
         session.scroll(rows: -Int(whole))
         needsDisplay = true
     }
 
     // MARK: Selection
 
+    /// Programs that ask for the mouse get clicks and the wheel, unless Shift is held to select text instead.
+    private func reportsMouse(_ event: NSEvent) -> Bool {
+        !event.modifierFlags.contains(.shift) && session.wantsMouse
+    }
+
     override func mouseDown(with event: NSEvent) {
+        if reportsMouse(event) { return session.reportMouse(pointer(UPAA_POINTER_PRESS, event, button: 1)) }
         _ = session.select(pointer(UPAA_POINTER_PRESS, event))
         needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if reportsMouse(event) { return session.reportMouse(pointer(UPAA_POINTER_DRAG, event, button: 1)) }
         lastDrag = event
         let wantsAutoscroll = session.select(pointer(UPAA_POINTER_DRAG, event))
         needsDisplay = true
@@ -107,8 +120,25 @@ final class TerminalView: MTKView, MTKViewDelegate {
 
     override func mouseUp(with event: NSEvent) {
         stopAutoscroll()
+        if reportsMouse(event) { return session.reportMouse(pointer(UPAA_POINTER_RELEASE, event, button: 1)) }
         _ = session.select(pointer(UPAA_POINTER_RELEASE, event))
         needsDisplay = true
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if reportsMouse(event) { session.reportMouse(pointer(UPAA_POINTER_PRESS, event, button: 2)) }
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        if reportsMouse(event) { session.reportMouse(pointer(UPAA_POINTER_RELEASE, event, button: 2)) }
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        if reportsMouse(event) { session.reportMouse(pointer(UPAA_POINTER_PRESS, event, button: 3)) }
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        if reportsMouse(event) { session.reportMouse(pointer(UPAA_POINTER_RELEASE, event, button: 3)) }
     }
 
     private func stopAutoscroll() {
@@ -116,12 +146,14 @@ final class TerminalView: MTKView, MTKViewDelegate {
         autoscrollTimer = nil
     }
 
-    /// The event as a selection pointer, in drawable pixels from the top-left.
-    private func pointer(_ kind: Int, _ event: NSEvent) -> UpaaPointer {
+    /// The event as a pointer in drawable pixels from the top-left. button is only used when reporting to the program.
+    private func pointer(_ kind: Int, _ event: NSEvent, button: UInt8 = 0) -> UpaaPointer {
         let location = convert(event.locationInWindow, from: nil)
         let cell = renderer.cellSize
         return UpaaPointer(
             kind: UInt8(kind),
+            button: button,
+            mods: Self.mods(event.modifierFlags),
             rectangle: event.modifierFlags.contains(.option),
             x: location.x * scale,
             y: (bounds.height - location.y) * scale,
@@ -131,7 +163,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
             cols: UInt32(gridSize.cols), rows: UInt32(gridSize.rows),
             cell_width: UInt32(cell.width), cell_height: UInt32(cell.height),
             padding_left: UInt32(renderer.padding.horizontal), padding_top: UInt32(renderer.padding.top),
-            screen_height: UInt32(drawableSize.height))
+            padding_right: UInt32(renderer.padding.horizontal), padding_bottom: UInt32(renderer.padding.bottom),
+            screen_width: UInt32(drawableSize.width), screen_height: UInt32(drawableSize.height))
     }
 
     @objc func copy(_ sender: Any?) {

@@ -19,6 +19,9 @@ key_encoder: vt.GhosttyKeyEncoder,
 key_event: vt.GhosttyKeyEvent,
 /// Interprets mouse presses and drags as text selection (clicks, double and triple clicks, autoscroll).
 gesture: vt.GhosttySelectionGesture,
+/// Encodes mouse events for programs that ask for them (vim with mouse=a, htop, ...).
+mouse_encoder: vt.GhosttyMouseEncoder,
+mouse_event: vt.GhosttyMouseEvent,
 mutex: std.c.pthread_mutex_t = .{},
 thread: std.Thread,
 /// Pipe to stop the read thread. Writing to it wakes poll.
@@ -65,9 +68,13 @@ pub const KeyEvent = extern struct {
     };
 };
 
-/// A mouse event for selecting text. Same layout as UpaaPointer in Sources/CUpaaCore.
+/// A mouse event, for selecting text or for reporting to the program. Same layout as UpaaPointer in Sources/CUpaaCore.
 pub const Pointer = extern struct {
     kind: Kind,
+    /// GhosttyMouseButton (1 left, 2 right, 3 middle, 4 wheel up, 5 wheel down). Only used for reporting.
+    button: u8 = 0,
+    /// KeyEvent.Mods values added together. Only used for reporting.
+    mods: u8 = 0,
     /// Option held: select a rectangle instead of running text.
     rectangle: bool = false,
     /// Position in drawable pixels from the top-left of the view.
@@ -83,7 +90,10 @@ pub const Pointer = extern struct {
     cell_height: u32,
     padding_left: u32 = 0,
     padding_top: u32 = 0,
-    /// Height of the whole view in pixels. Dragging past it asks for autoscroll.
+    padding_right: u32 = 0,
+    padding_bottom: u32 = 0,
+    /// Size of the whole view in pixels. Dragging past the top or bottom asks for autoscroll.
+    screen_width: u32 = 0,
     screen_height: u32,
 
     pub const Kind = enum(u8) { press = 0, drag = 1, release = 2, autoscroll = 3 };
@@ -123,6 +133,16 @@ pub fn create(opts: Options) !*Session {
     if (vt.ghostty_selection_gesture_new(null, &gesture) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
     errdefer vt.ghostty_selection_gesture_free(gesture, terminal);
 
+    var mouse_encoder: vt.GhosttyMouseEncoder = null;
+    if (vt.ghostty_mouse_encoder_new(null, &mouse_encoder) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
+    errdefer vt.ghostty_mouse_encoder_free(mouse_encoder);
+    // Report motion only when the pointer moves to another cell, as xterm does.
+    var track_last_cell = true;
+    _ = vt.ghostty_mouse_encoder_set(mouse_encoder, vt.GHOSTTY_MOUSE_ENCODER_OPT_TRACK_LAST_CELL, &track_last_cell);
+    var mouse_event: vt.GhosttyMouseEvent = null;
+    if (vt.ghostty_mouse_event_new(null, &mouse_event) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
+    errdefer vt.ghostty_mouse_event_free(mouse_event);
+
     var stop_pipe: [2]c_int = undefined;
     if (c.pipe(&stop_pipe) != 0) return error.PipeFailed;
     errdefer for (stop_pipe) |fd| {
@@ -138,6 +158,8 @@ pub fn create(opts: Options) !*Session {
         .key_encoder = key_encoder,
         .key_event = key_event,
         .gesture = gesture,
+        .mouse_encoder = mouse_encoder,
+        .mouse_event = mouse_event,
         .thread = undefined,
         .stop_pipe = stop_pipe,
         .callbacks = opts.callbacks,
@@ -153,6 +175,8 @@ pub fn destroy(self: *Session) void {
     self.thread.join();
     self.pty.deinit();
     for (self.stop_pipe) |fd| _ = c.close(fd);
+    vt.ghostty_mouse_event_free(self.mouse_event);
+    vt.ghostty_mouse_encoder_free(self.mouse_encoder);
     vt.ghostty_selection_gesture_free(self.gesture, self.terminal);
     vt.ghostty_key_event_free(self.key_event);
     vt.ghostty_key_encoder_free(self.key_encoder);
@@ -239,6 +263,53 @@ pub fn updateRenderState(self: *Session, state: vt.GhosttyRenderState) bool {
         if (vt.ghostty_render_state_begin_update(state, self.terminal) != vt.GHOSTTY_SUCCESS) return false;
     }
     return vt.ghostty_render_state_end_update(state) == vt.GHOSTTY_SUCCESS;
+}
+
+/// Whether the program asked for mouse events (vim with mouse=a, htop, ...). If so, clicks and the wheel go to
+/// reportMouse instead of selection and scrolling, unless Shift is held.
+pub fn wantsMouse(self: *Session) bool {
+    self.lock();
+    defer self.unlock();
+    var tracking: vt.GhosttyMouseTrackingMode = vt.GHOSTTY_MOUSE_TRACKING_NONE;
+    _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &tracking);
+    return tracking != vt.GHOSTTY_MOUSE_TRACKING_NONE;
+}
+
+/// Sends a mouse event to the program in the format and mode it asked for. A wheel step is a press of button 4 or 5.
+pub fn reportMouse(self: *Session, p: Pointer) void {
+    var buf: [64]u8 = undefined;
+    var len: usize = 0;
+    {
+        self.lock();
+        defer self.unlock();
+
+        const ev = self.mouse_event;
+        _ = vt.ghostty_mouse_event_set_action(ev, switch (p.kind) {
+            .press => vt.GHOSTTY_MOUSE_ACTION_PRESS,
+            .release => vt.GHOSTTY_MOUSE_ACTION_RELEASE,
+            .drag, .autoscroll => vt.GHOSTTY_MOUSE_ACTION_MOTION,
+        });
+        if (p.button == 0) _ = vt.ghostty_mouse_event_clear_button(ev) else _ = vt.ghostty_mouse_event_set_button(ev, p.button);
+        _ = vt.ghostty_mouse_event_set_mods(ev, p.mods);
+        _ = vt.ghostty_mouse_event_set_position(ev, .{ .x = @floatCast(p.x), .y = @floatCast(p.y) });
+
+        var size = std.mem.zeroes(vt.GhosttyMouseEncoderSize);
+        size.size = @sizeOf(vt.GhosttyMouseEncoderSize);
+        size.screen_width = p.screen_width;
+        size.screen_height = p.screen_height;
+        size.cell_width = p.cell_width;
+        size.cell_height = p.cell_height;
+        size.padding_top = p.padding_top;
+        size.padding_bottom = p.padding_bottom;
+        size.padding_left = p.padding_left;
+        size.padding_right = p.padding_right;
+        var pressed = p.kind == .press or p.kind == .drag;
+        _ = vt.ghostty_mouse_encoder_set_from_terminal(self.mouse_encoder, self.terminal);
+        _ = vt.ghostty_mouse_encoder_set(self.mouse_encoder, vt.GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+        _ = vt.ghostty_mouse_encoder_set(self.mouse_encoder, vt.GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &pressed);
+        if (vt.ghostty_mouse_encoder_encode(self.mouse_encoder, ev, &buf, buf.len, &len) != vt.GHOSTTY_SUCCESS) return;
+    }
+    if (len > 0) _ = self.pty.writeAll(buf[0..len]);
 }
 
 pub const PasteResult = enum(u8) { pasted = 0, rejected = 1, failed = 2 };
@@ -572,6 +643,7 @@ fn pointerAt(kind: Pointer.Kind, col: u32, row: u32, time_ms: u64) Pointer {
         .rows = 24,
         .cell_width = 10,
         .cell_height = 20,
+        .screen_width = 800,
         .screen_height = 480,
     };
 }
@@ -618,4 +690,19 @@ test "paste sends safe text, and holds back text that could run a command" {
     try std.testing.expectEqual(PasteResult.rejected, self.paste("\ntwo\n", false));
     try std.testing.expectEqual(PasteResult.pasted, self.paste("\ntwo\n", true));
     try self.waitForText("got:one/two", &out);
+}
+
+test "mouse events go to programs that ask for them" {
+    // Turn on button tracking with SGR encoding, then echo whatever arrives.
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "printf '\\033[?1000h\\033[?1006h'; echo ready; cat" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+    try self.waitForText("ready", &out);
+    try std.testing.expect(self.wantsMouse());
+
+    var press = pointerAt(.press, 2, 3, 0);
+    press.button = 1;
+    self.reportMouse(press);
+    // Left button pressed on column 3, row 4 (1-based). The terminal echoes the escape as ^[.
+    try self.waitForText("[<0;3;4M", &out);
 }

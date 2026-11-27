@@ -64,6 +64,16 @@ export fn upaa_session_select_all(session: *Session) void {
     session.selectAll();
 }
 
+/// Whether the program asked for mouse events. If so, send clicks and the wheel to upaa_session_report_mouse unless Shift is held.
+export fn upaa_session_wants_mouse(session: *Session) bool {
+    return session.wantsMouse();
+}
+
+/// Sends a mouse event to the program in the format it asked for.
+export fn upaa_session_report_mouse(session: *Session, pointer: *const Session.Pointer) void {
+    session.reportMouse(pointer.*);
+}
+
 /// Pastes text into the shell. Returns 0 pasted, 1 rejected (could run a command; ask, then call with allow_unsafe), 2 failed.
 export fn upaa_session_paste(session: *Session, text: [*]const u8, len: usize, allow_unsafe: bool) u8 {
     return @intFromEnum(session.paste(text[0..len], allow_unsafe));

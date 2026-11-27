@@ -63,6 +63,15 @@ final class TerminalSession {
         }
     }
 
+    /// Whether the program asked for mouse events (vim with mouse=a, htop, ...).
+    var wantsMouse: Bool { upaa_session_wants_mouse(handle) }
+
+    /// Sends a mouse event to the program. A wheel step is a press of button 4 (up) or 5 (down).
+    func reportMouse(_ pointer: UpaaPointer) {
+        var pointer = pointer
+        upaa_session_report_mouse(handle, &pointer)
+    }
+
     /// Feeds a mouse event to text selection. Returns true while a drag past the top or bottom edge wants autoscroll ticks.
     func select(_ pointer: UpaaPointer) -> Bool {
         var pointer = pointer
