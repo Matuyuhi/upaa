@@ -2,7 +2,7 @@
 
 A homemade terminal emulator for macOS only. Written in Swift (AppKit) and Zig. Terminal emulation itself is left to libghostty-vt (stable C ABI). The goal is to be usable for daily work.
 
-Progress, remaining work, and unconfirmed items are tracked in GitHub Issues (labels `feature`, `investigation`, `needs-mac`, `design`). Read the related issue before starting, link a PR to it with `Closes #N`, and open an issue for new remaining work or unconfirmed items instead of writing them in a file. The approved screen design (A3) is #22. The design notes up to 2026-11-27 are `docs/handoff.md` at commit e9c7a16 in the history.
+Progress, remaining work, and unconfirmed items are tracked in GitHub Issues (labels `feature`, `investigation`, `needs-mac`, `design`, and `M5` / `M6` for the milestone). Read the related issue before starting, link a PR to it with `Closes #N`, and open an issue for new remaining work or unconfirmed items instead of writing them in a file. The approved screen design (A3) is #22. The design notes up to 2026-11-27 are `docs/handoff.md` at commit e9c7a16 in the history.
 
 ## Decided
 
