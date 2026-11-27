@@ -21,9 +21,9 @@ pub const Size = struct {
 
 pub const SpawnError = error{ ForkFailed, NoShell };
 
-/// If command is null, starts the user's login shell as a login shell, in cwd or else the home directory.
-/// If not null, runs /bin/sh -c command in cwd or else the current directory (for tests and screen dumps).
-pub fn spawn(command: ?[*:0]const u8, cwd: ?[*:0]const u8, size: Size) SpawnError!Pty {
+/// If command is null, starts the user's login shell as a login shell, in start_dir or else the home directory.
+/// If not null, runs /bin/sh -c command in start_dir or else the current directory (for tests and screen dumps).
+pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size) SpawnError!Pty {
     // malloc is not allowed between fork and exec, so build the needed strings before fork.
     const path: [*:0]const u8 = if (command == null) loginShell() orelse return error.NoShell else "/bin/sh";
     var argv0_buf: [256]u8 = undefined;
@@ -31,7 +31,7 @@ pub fn spawn(command: ?[*:0]const u8, cwd: ?[*:0]const u8, size: Size) SpawnErro
         .{ "sh", "-c", cmd, null }
     else
         .{ loginArgv0(path, &argv0_buf), null, null, null };
-    const dir: ?[*:0]const u8 = cwd orelse if (command == null) c.getenv("HOME") else null;
+    const dir: ?[*:0]const u8 = start_dir orelse if (command == null) c.getenv("HOME") else null;
 
     var ws = size.winsize();
     var master: c_int = -1;
