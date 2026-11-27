@@ -31,7 +31,7 @@ Works today:
 - 10 MB of scrollback, scrolled with the wheel or trackpad
 - Mouse input for programs that ask for it (vim with `mouse=a`, htop); hold Shift to select instead
 - A config file for the font, colors and window size (see Configuration)
-- Windows and tabs (Cmd-N, Cmd-T, Cmd-W, Cmd-Shift-[ and Cmd-Shift-] to move between tabs)
+- Windows and tabs named after the title the program sets (Cmd-N, Cmd-T, Cmd-W, Cmd-Shift-[ and Cmd-Shift-], Cmd-1 to Cmd-9)
 
 Not yet: splits, search.
 

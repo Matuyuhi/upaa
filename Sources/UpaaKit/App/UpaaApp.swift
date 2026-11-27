@@ -71,12 +71,12 @@ public enum UpaaApp {
         appItem.submenu?.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         mainMenu.addItem(appItem)
 
-        // New windows and tabs go to AppDelegate; Close goes to the key window.
+        // New Window goes to AppDelegate; the tab items go to the key window's TabbedWindow (its delegate).
         let fileItem = NSMenuItem()
         fileItem.submenu = NSMenu(title: "File")
         fileItem.submenu?.addItem(withTitle: "New Window", action: #selector(AppDelegate.newWindow(_:)), keyEquivalent: "n")
-        fileItem.submenu?.addItem(withTitle: "New Tab", action: #selector(AppDelegate.newWindowForTab(_:)), keyEquivalent: "t")
-        fileItem.submenu?.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        fileItem.submenu?.addItem(withTitle: "New Tab", action: #selector(TabbedWindow.newTab(_:)), keyEquivalent: "t")
+        fileItem.submenu?.addItem(withTitle: "Close Tab", action: #selector(TabbedWindow.closeTab(_:)), keyEquivalent: "w")
         mainMenu.addItem(fileItem)
 
         // The actions go to the first responder (TerminalView).
@@ -87,12 +87,20 @@ public enum UpaaApp {
         editItem.submenu?.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
         mainMenu.addItem(editItem)
 
-        // AppKit adds the other tab items (Show Tab Bar, Merge All Windows, ...) to the menu set as windowsMenu.
+        // upaa draws its own tabs, so AppKit's window tabs (and the menu items it adds for them) are turned off.
+        NSWindow.allowsAutomaticWindowTabbing = false
         let windowItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Show Previous Tab", action: #selector(NSWindow.selectPreviousTab(_:)), keyEquivalent: "{")
-        windowMenu.addItem(withTitle: "Show Next Tab", action: #selector(NSWindow.selectNextTab(_:)), keyEquivalent: "}")
+        windowMenu.addItem(withTitle: "Show Previous Tab", action: #selector(TabbedWindow.showPreviousTab(_:)), keyEquivalent: "{")
+        windowMenu.addItem(withTitle: "Show Next Tab", action: #selector(TabbedWindow.showNextTab(_:)), keyEquivalent: "}")
+        // Cmd-1 to Cmd-9 pick a tab without listing nine items in the menu.
+        for number in 1...9 {
+            let item = windowMenu.addItem(withTitle: "Show Tab \(number)", action: #selector(TabbedWindow.showTab(_:)), keyEquivalent: "\(number)")
+            item.tag = number
+            item.isHidden = true
+            item.allowsKeyEquivalentWhenHidden = true
+        }
         windowItem.submenu = windowMenu
         mainMenu.addItem(windowItem)
         NSApplication.shared.windowsMenu = windowMenu

@@ -36,13 +36,15 @@ UpaaConfigValues upaa_config_values(const UpaaConfig *config);
 
 typedef struct UpaaSession UpaaSession;
 
-// Both are called from the Zig read thread.
+// All are called from the Zig read thread.
 typedef struct {
     void *userdata;
     // The screen changed. The next call does not come until upaa_session_take_dirty is called.
     void (*on_wakeup)(void *userdata);
     // The child process exited.
     void (*on_exit)(void *userdata);
+    // The program set the title (OSC 0 or 2). Read it with upaa_session_title.
+    void (*on_title)(void *userdata);
 } UpaaSessionCallbacks;
 
 // If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. Returns NULL on failure.
@@ -123,6 +125,8 @@ void upaa_session_scroll(UpaaSession *session, ptrdiff_t rows);
 void upaa_session_key(UpaaSession *session, const UpaaKeyEvent *event);
 void upaa_session_resize(UpaaSession *session, uint16_t cols, uint16_t rows, uint32_t cell_width_px, uint32_t cell_height_px);
 bool upaa_session_take_dirty(UpaaSession *session);
+// The title the program set (UTF-8). Returns the full length (0 if none); anything beyond cap is truncated.
+size_t upaa_session_title(UpaaSession *session, uint8_t *out, size_t cap);
 // Plain text of the screen. The return value is the original length; anything beyond cap is truncated. -1 on failure.
 ptrdiff_t upaa_session_plain_text(UpaaSession *session, uint8_t *out, size_t cap);
 

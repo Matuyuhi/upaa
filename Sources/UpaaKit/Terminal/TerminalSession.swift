@@ -18,6 +18,12 @@ final class TerminalSession {
         set { events.onExit = newValue }
     }
 
+    /// The program set the title (read it with title). Called on the main thread.
+    var onTitle: (() -> Void)? {
+        get { events.onTitle }
+        set { events.onTitle = newValue }
+    }
+
     /// If command is nil, starts the login shell; otherwise starts /bin/sh -c command. config nil keeps the default colors.
     init?(cols: UInt16, rows: UInt16, command: String? = nil, config: Config? = nil) {
         let events = Events()
@@ -30,6 +36,10 @@ final class TerminalSession {
             on_exit: { userdata in
                 let events = Unmanaged<Events>.fromOpaque(userdata!).takeUnretainedValue()
                 DispatchQueue.main.async { events.onExit?() }
+            },
+            on_title: { userdata in
+                let events = Unmanaged<Events>.fromOpaque(userdata!).takeUnretainedValue()
+                DispatchQueue.main.async { events.onTitle?() }
             }
         )
         guard let handle = upaa_session_new(cols, rows, command, config?.handle, &callbacks) else { return nil }
@@ -111,6 +121,13 @@ final class TerminalSession {
         upaa_session_resize(handle, cols, rows, UInt32(cellWidth), UInt32(cellHeight))
     }
 
+    /// The title the program set (OSC 0 or 2), or nil if it set none.
+    var title: String? {
+        var out = [UInt8](repeating: 0, count: 1024)
+        let n = upaa_session_title(handle, &out, out.count)
+        return n > 0 ? String(decoding: out.prefix(n), as: UTF8.self) : nil
+    }
+
     /// Plain text of the screen.
     func plainText() -> String {
         var out = [UInt8](repeating: 0, count: 64 * 1024)
@@ -128,5 +145,6 @@ final class TerminalSession {
     private final class Events {
         var onWakeup: (() -> Void)?
         var onExit: (() -> Void)?
+        var onTitle: (() -> Void)?
     }
 }

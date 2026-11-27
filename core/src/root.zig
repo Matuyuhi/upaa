@@ -119,6 +119,11 @@ export fn upaa_session_take_dirty(session: *Session) bool {
     return session.takeDirty();
 }
 
+/// The title the program set (UTF-8). Returns the full length (0 if none); anything beyond cap is truncated.
+export fn upaa_session_title(session: *Session, out: [*]u8, cap: usize) usize {
+    return session.title(out[0..cap]);
+}
+
 /// Returns the full length; anything beyond cap is truncated. Returns -1 on failure.
 export fn upaa_session_plain_text(session: *Session, out: [*]u8, cap: usize) isize {
     return @intCast(session.plainText(out[0..cap]) orelse return -1);

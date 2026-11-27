@@ -36,6 +36,8 @@ pub const Callbacks = extern struct {
     on_wakeup: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
     /// The child process exited. Called from the read thread.
     on_exit: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
+    /// The program set the title (OSC 0 or 2). Called from the read thread with the lock held; read it with title().
+    on_title: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
 };
 
 /// One key press (release). Same layout as UpaaKeyEvent in Sources/CUpaaCore.
@@ -111,6 +113,7 @@ pub fn create(opts: Options) !*Session {
     errdefer vt.ghostty_terminal_free(terminal);
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_USERDATA, self);
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_WRITE_PTY, @ptrCast(&onWritePty));
+    _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, @ptrCast(&onTitleChanged));
     // The library default (10,000 bytes) keeps only a few hundred lines of scrollback.
     var scrollback: usize = 10 * 1024 * 1024;
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollback);
@@ -247,6 +250,17 @@ pub fn wantsMouse(self: *Session) bool {
     var tracking: vt.GhosttyMouseTrackingMode = vt.GHOSTTY_MOUSE_TRACKING_NONE;
     _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &tracking);
     return tracking != vt.GHOSTTY_MOUSE_TRACKING_NONE;
+}
+
+/// The title the program set (UTF-8), copied into out. Returns the full length; 0 if none was set.
+pub fn title(self: *Session, out: []u8) usize {
+    self.lock();
+    defer self.unlock();
+    var text: vt.GhosttyString = .{ .ptr = null, .len = 0 };
+    if (vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_TITLE, &text) != vt.GHOSTTY_SUCCESS) return 0;
+    const n = @min(text.len, out.len);
+    if (n > 0) @memcpy(out[0..n], text.ptr[0..n]);
+    return text.len;
 }
 
 /// Sends a mouse event to the program in the format and mode it asked for. A wheel step is a press of button 4 or 5.
@@ -486,6 +500,11 @@ fn onWritePty(_: vt.GhosttyTerminal, userdata: ?*anyopaque, data: [*c]const u8, 
     _ = self.pty.writeAll(data[0..len]);
 }
 
+fn onTitleChanged(_: vt.GhosttyTerminal, userdata: ?*anyopaque) callconv(.c) void {
+    const self: *Session = @ptrCast(@alignCast(userdata orelse return));
+    if (self.callbacks.on_title) |f| f(self.callbacks.userdata);
+}
+
 fn waitForText(self: *Session, needle: []const u8, out: []u8) !void {
     var tries: usize = 0;
     while (tries < 500) : (tries += 1) {
@@ -505,6 +524,16 @@ test "shell output reaches the terminal" {
     var out: [4096]u8 = undefined;
     try self.waitForText("upaa-42", &out);
     try std.testing.expect(self.takeDirty());
+}
+
+test "a title set by the program can be read back" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "printf '\\033]2;upaa-title\\007title-sent'; read _" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+    try self.waitForText("title-sent", &out);
+    var buf: [64]u8 = undefined;
+    const n = self.title(&buf);
+    try std.testing.expectEqualStrings("upaa-title", buf[0..n]);
 }
 
 test "resize is visible to the child" {

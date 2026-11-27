@@ -4,8 +4,8 @@ import MetalKit
 
 /// A view that displays one terminal and receives key input. Redraws only when the screen changes.
 final class TerminalView: MTKView, MTKViewDelegate {
-    private let session: TerminalSession
-    private let renderer: Renderer
+    let session: TerminalSession
+    let renderer: Renderer
     private let commandQueue: MTLCommandQueue
     private var gridSize: (cols: Int, rows: Int) = (0, 0)
     /// The cursor cell from the last frame. The IME candidate window is placed below it.
@@ -70,10 +70,17 @@ final class TerminalView: MTKView, MTKViewDelegate {
         }
     }
 
+    /// A tab that comes back into the window needs a frame, since it was not drawn while it was hidden.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { redraw() }
+    }
+
     func draw(in view: MTKView) {
         // Register to receive the next change notification before drawing.
         _ = session.takeDirty()
-        guard let pass = currentRenderPassDescriptor,
+        guard window != nil,
+              let pass = currentRenderPassDescriptor,
               let drawable = currentDrawable,
               let commandBuffer = commandQueue.makeCommandBuffer()
         else { return }
