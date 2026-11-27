@@ -31,7 +31,7 @@ VERSION="$("$APP/Contents/MacOS/upaa" --version)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 
 mkdir -p "$APP/Contents/Resources/bin"
-cp LICENSE THIRD_PARTY_LICENSES.md "$APP/Contents/Resources/"
+cp LICENSE THIRD_PARTY_LICENSES.md Resources/upaa.icns "$APP/Contents/Resources/"
 cp scripts/upaa-launcher.sh "$APP/Contents/Resources/bin/upaa"
 chmod +x "$APP/Contents/Resources/bin/upaa"
 
