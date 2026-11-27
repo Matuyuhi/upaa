@@ -15,7 +15,6 @@ jobs:
   notes:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     outputs:
       notes: ${{ steps.claude.outputs.structured_output }}
     steps:
@@ -27,6 +26,7 @@ jobs:
       - uses: anthropics/claude-code-action@v1.0.290
         id: claude
         continue-on-error: true
+        timeout-minutes: 10
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
