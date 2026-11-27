@@ -17,6 +17,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
     private var lastDrag: NSEvent?
     /// Fires when the mascot's picture changes, since it moves without the screen changing.
     private var mascotTimer: Timer?
+    /// A redraw is waiting to run after the current event.
+    private var redrawQueued = false
 
     /// Drawable pixels per view point (2 on Retina).
     private var scale: CGFloat { drawableSize.width / max(bounds.width, 1) }
@@ -32,11 +34,11 @@ final class TerminalView: MTKView, MTKViewDelegate {
         commandQueue = renderer.device.makeCommandQueue()!
         super.init(frame: .zero, device: renderer.device)
         colorPixelFormat = Renderer.pixelFormat
-        // Draw only when needsDisplay is set, not on every frame.
+        // Draw only when something changes, and right away (redraw) rather than at the next display update.
         isPaused = true
-        enableSetNeedsDisplay = true
+        enableSetNeedsDisplay = false
         delegate = self
-        session.onWakeup = { [weak self] in self?.needsDisplay = true }
+        session.onWakeup = { [weak self] in self?.redraw() }
     }
 
     @available(*, unavailable)
@@ -47,13 +49,25 @@ final class TerminalView: MTKView, MTKViewDelegate {
     // MARK: Drawing
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        // The drawable needs a frame at its new size even when the grid stays the same.
+        redraw()
         let (cols, rows) = renderer.gridSize(for: (Int(size.width), Int(size.height)))
         guard (cols, rows) != gridSize else { return }
         gridSize = (cols, rows)
         session.resize(
             cols: UInt16(clamping: cols), rows: UInt16(clamping: rows),
             cellWidth: renderer.cellSize.width, cellHeight: renderer.cellSize.height)
-        needsDisplay = true
+    }
+
+    /// Draws once the current event has been handled. Requests made while handling one event share a frame.
+    private func redraw() {
+        guard !redrawQueued else { return }
+        redrawQueued = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.redrawQueued = false
+            self.draw()
+        }
     }
 
     func draw(in view: MTKView) {
@@ -71,14 +85,14 @@ final class TerminalView: MTKView, MTKViewDelegate {
 
         mascotTimer?.invalidate()
         mascotTimer = renderer.mascotDelay.map { delay in
-            Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in self?.needsDisplay = true }
+            Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in self?.redraw() }
         }
     }
 
     /// Shows a notice above the mascot (e.g. an update is available).
     func showNote(_ text: String) {
         renderer.setNote(text)
-        needsDisplay = true
+        redraw()
     }
 
     // MARK: Scrolling
@@ -99,7 +113,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
             return
         }
         session.scroll(rows: -Int(whole))
-        needsDisplay = true
+        redraw()
     }
 
     // MARK: Selection
@@ -114,19 +128,19 @@ final class TerminalView: MTKView, MTKViewDelegate {
         let press = pointer(UPAA_POINTER_PRESS, event)
         renderer.pokeMascot(x: press.x, y: press.y)
         _ = session.select(press)
-        needsDisplay = true
+        redraw()
     }
 
     override func mouseDragged(with event: NSEvent) {
         if reportsMouse(event) { return session.reportMouse(pointer(UPAA_POINTER_DRAG, event, button: 1)) }
         lastDrag = event
         let wantsAutoscroll = session.select(pointer(UPAA_POINTER_DRAG, event))
-        needsDisplay = true
+        redraw()
         if wantsAutoscroll, autoscrollTimer == nil {
             autoscrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
                 guard let self, let drag = self.lastDrag else { return }
                 if !self.session.select(self.pointer(UPAA_POINTER_AUTOSCROLL, drag)) { self.stopAutoscroll() }
-                self.needsDisplay = true
+                self.redraw()
             }
         } else if !wantsAutoscroll {
             stopAutoscroll()
@@ -137,7 +151,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
         stopAutoscroll()
         if reportsMouse(event) { return session.reportMouse(pointer(UPAA_POINTER_RELEASE, event, button: 1)) }
         _ = session.select(pointer(UPAA_POINTER_RELEASE, event))
-        needsDisplay = true
+        redraw()
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -207,7 +221,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
 
     override func selectAll(_ sender: Any?) {
         session.selectAll()
-        needsDisplay = true
+        redraw()
     }
 
     // MARK: Key input
@@ -269,8 +283,9 @@ final class TerminalView: MTKView, MTKViewDelegate {
 extension TerminalView: NSTextInputClient {
     func insertText(_ string: Any, replacementRange: NSRange) {
         let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
-        markedText = NSMutableAttributedString()
-        needsDisplay = true
+        // Plain typing also arrives here, so this draws only when a composition ends. An extra frame before the
+        // shell echoes the character would push the echo to a later display refresh.
+        unmarkText()
         if insertedText != nil {
             insertedText! += text
         } else {
@@ -285,12 +300,13 @@ extension TerminalView: NSTextInputClient {
         } else {
             markedText = NSMutableAttributedString(string: string as? String ?? "")
         }
-        needsDisplay = true
+        redraw()
     }
 
     func unmarkText() {
+        guard hasMarkedText() else { return }
         markedText = NSMutableAttributedString()
-        needsDisplay = true
+        redraw()
     }
 
     func hasMarkedText() -> Bool {
