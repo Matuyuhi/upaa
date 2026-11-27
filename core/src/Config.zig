@@ -18,9 +18,9 @@ window_height: u16 = 24,
 /// null keeps libghostty-vt's default.
 foreground: ?vt.GhosttyColorRgb = null,
 background: ?vt.GhosttyColorRgb = null,
-palette: [256]?vt.GhosttyColorRgb = [_]?vt.GhosttyColorRgb{null} ** 256,
+palette: [256]?vt.GhosttyColorRgb = @splat(null),
 /// NUL-terminated ASCII, empty if every line was read.
-problem: [80]u8 = [_]u8{0} ** 80,
+problem: [80]u8 = @splat(0),
 
 /// What the Swift side reads. Same layout as UpaaConfigValues in Sources/CUpaaCore. The pointers live as long as the Config.
 pub const Values = extern struct {
@@ -125,7 +125,7 @@ fn fail(config: *Config, line: usize, reason: []const u8) void {
 }
 
 fn fixed(comptime text: []const u8) [129]u8 {
-    var out = [_]u8{0} ** 129;
+    var out: [129]u8 = @splat(0);
     @memcpy(out[0..text.len], text);
     return out;
 }
