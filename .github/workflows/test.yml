@@ -98,17 +98,6 @@ jobs:
             [ -n "$id" ] || { echo "upaa opened no window ($name)"; exit 1; }
             screencapture -x -o -l "$id" "$dir/$name.png"
             sips -g pixelWidth -g pixelHeight "$dir/$name.png"; wc -c "$dir/$name.png"
-            swift - "$dir/$name.png" <<'SWIFT'
-          import CoreGraphics; import ImageIO; import Foundation
-          let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: CommandLine.arguments[1]) as CFURL, nil)!
-          let img = CGImageSourceCreateImageAtIndex(src, 0, nil)!
-          var px = [UInt8](repeating: 0, count: 4)
-          let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-          for (fx, fy) in [(0.1, 0.1), (0.5, 0.5), (0.9, 0.2)] {
-              ctx.draw(img, in: CGRect(x: -CGFloat(img.width) * fx, y: -CGFloat(img.height) * fy, width: CGFloat(img.width), height: CGFloat(img.height)))
-              print("DIAG pixel", fx, fy, String(format: "#%02x%02x%02x", px[0], px[1], px[2]))
-          }
-          SWIFT
             kill "$pid"
             wait "$pid" || true
           done
