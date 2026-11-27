@@ -182,7 +182,7 @@ final class ChangesPanel: NSView {
             File(path: String($0), isNew: true)
         }
         let pick = files.first { $0.path == selected } ?? files.first
-        let diff = pick.map { file in
+        let diff = pick.map { file -> [Substring] in
             let text = file.isNew
                 ? git(["diff", "--no-index", "--", "/dev/null", file.path], in: root)
                 : git(["diff", "HEAD", "--", file.path], in: root)
