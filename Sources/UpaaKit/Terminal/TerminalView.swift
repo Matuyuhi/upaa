@@ -50,6 +50,15 @@ final class TerminalView: MTKView, MTKViewDelegate {
 
     // MARK: Drawing
 
+    /// Points kept free above the text, for chrome that floats over the terminal. The background still fills them.
+    var topInset: CGFloat = 0 {
+        didSet {
+            guard topInset != oldValue else { return }
+            renderer.extraTop = Int((topInset * (window?.backingScaleFactor ?? 2)).rounded())
+            if drawableSize.width > 0 { mtkView(self, drawableSizeWillChange: drawableSize) }
+        }
+    }
+
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         // The drawable needs a frame at its new size even when the grid stays the same.
         redraw()

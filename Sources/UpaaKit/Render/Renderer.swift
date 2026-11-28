@@ -15,7 +15,13 @@ final class Renderer {
     let cellSize: (width: Int, height: Int)
     private let underline: SIMD2<Float>
     /// Margin around the grid (pixels). x is left and right, y is top and bottom.
-    let padding: (top: Int, bottom: Int, horizontal: Int)
+    private(set) var padding: (top: Int, bottom: Int, horizontal: Int)
+    private let topPadding: Int
+    /// Pixels kept free above the text on top of the margin, for chrome that floats over the terminal.
+    /// The background still fills them.
+    var extraTop = 0 {
+        didSet { padding.top = topPadding + extraTop }
+    }
 
     /// Margin around the grid (points). The left, right, and bottom margins keep the text from being clipped by the window's rounded corners.
     /// The top margin is smaller because the title bar keeps the text away from the rounded corners.
@@ -47,6 +53,7 @@ final class Renderer {
         padding = (
             Int((points.top * scale).rounded()), Int((points.bottom * scale).rounded()),
             Int((points.horizontal * scale).rounded()))
+        topPadding = padding.top
 
         let library: MTLLibrary
         do {

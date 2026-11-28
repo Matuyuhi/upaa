@@ -2,8 +2,9 @@ import AppKit
 
 /// One window with tabs, laid out as design A3. A tab is one terminal, or split views with terminals (panes) at their
 /// ends. Each pane has its own shell, and a tab is named after the title its focused pane's program set.
-/// The window's ground is a color gradient, as in Arc, with the terminal on it as a rounded card. The tabs are a list
-/// down the left side, or (Cmd-B) a glass capsule floating at the top. The right panel
+/// With the tabs down the left side, the window's ground is a color gradient, as in Arc, with the tab list on it and the
+/// terminal as a rounded card. With the tabs at the top (Cmd-B), the terminal fills the window and the tabs and tools
+/// float over it in glass capsules, its text starting below them. The right panel
 /// (Cmd-J) shows the changed files of the focused pane's git repository: down the side it takes room from the
 /// terminal, with the tabs at the top it floats over the terminal as a card.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
@@ -20,12 +21,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         }
 
         /// Panes from left to right, top to bottom.
-        var panes: [TerminalView] { Tab.panes(in: top) }
-
-        private static func panes(in view: NSView) -> [TerminalView] {
-            if let terminal = view as? TerminalView { return [terminal] }
-            return (view as? NSSplitView)?.arrangedSubviews.flatMap(panes(in:)) ?? []
-        }
+        var panes: [TerminalView] { terminals(in: top) }
     }
 
     private let window: NSWindow
@@ -93,7 +89,6 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
             ground.addSubview(view)
         }
         host.wantsLayer = true
-        host.layer?.cornerRadius = Chrome.terminalCornerRadius
         host.layer?.masksToBounds = true
         buildTabPanel()
         buildHeader()
@@ -401,6 +396,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         }
         if !vertical { tabStrip.addArrangedSubview(plusButton(size: 30)) }
 
+        // A split or a closed pane can change which panes are along the top.
+        host.needsLayout = true
         let panes = tab.panes
         for pane in panes { pane.alphaValue = panes.count == 1 || pane === tab.focus ? 1 : Chrome.inactivePaneAlpha }
         shellButton.isOn = panes.count > 1
@@ -430,6 +427,10 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     private func arrange(sidePanel shown: Bool) {
         arranged = (vertical, shown)
         tabPanel.isHidden = !vertical
+        // Down the side the terminal is a card on the backdrop. With the tabs at the top it fills the window, and the
+        // glass header floats over it, so its text starts below the header.
+        host.layer?.cornerRadius = vertical ? Chrome.terminalCornerRadius : 0
+        host.topInset = vertical ? 0 : Chrome.inset + Chrome.headerHeight + 4
         tabCapsule.isHidden = vertical
         titleLabel.isHidden = !vertical
         sidePanel.isHidden = !shown
@@ -456,15 +457,14 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
                 sidePanel.widthAnchor.constraint(equalToConstant: Chrome.sidePanelWidth),
             ]
         } else {
-            // The terminal fills the window below the header, and the card floats over it.
             layout += [
                 header.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
                 header.leadingAnchor.constraint(equalTo: ground.leadingAnchor, constant: 12 + Chrome.trafficLightsWidth),
                 header.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -12),
-                host.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 6),
-                host.leadingAnchor.constraint(equalTo: ground.leadingAnchor, constant: inset),
-                host.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -inset),
-                host.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
+                host.topAnchor.constraint(equalTo: ground.topAnchor),
+                host.leadingAnchor.constraint(equalTo: ground.leadingAnchor),
+                host.trailingAnchor.constraint(equalTo: ground.trailingAnchor),
+                host.bottomAnchor.constraint(equalTo: ground.bottomAnchor),
                 sidePanel.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
                 sidePanel.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -14),
                 sidePanel.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -38),
@@ -477,8 +477,26 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
 
 /// Holds the selected tab's view and gives it all of its own size each time it is laid out.
 private final class Host: NSView {
+    /// Room the panes along the top edge keep free above their text.
+    var topInset: CGFloat = 0 {
+        didSet { needsLayout = true }
+    }
+
     override func layout() {
         super.layout()
-        subviews.forEach { $0.frame = bounds }
+        for view in subviews {
+            view.frame = bounds
+            view.layoutSubtreeIfNeeded()
+            for pane in terminals(in: view) {
+                let touchesTop = abs(pane.convert(pane.bounds, to: self).maxY - bounds.maxY) < 1
+                pane.topInset = touchesTop ? topInset : 0
+            }
+        }
     }
+}
+
+/// The terminals in a tab's view, from left to right and top to bottom.
+private func terminals(in view: NSView) -> [TerminalView] {
+    if let terminal = view as? TerminalView { return [terminal] }
+    return (view as? NSSplitView)?.arrangedSubviews.flatMap(terminals(in:)) ?? []
 }

@@ -166,7 +166,7 @@ final class Backdrop: NSView {
     ]
     private static let base = (light: UInt32(0xeef1f6), dark: UInt32(0x111827))
 
-    private let layers = Self.spots.map { _ in CAGradientLayer() }
+    private let layers = Backdrop.spots.map { _ in CAGradientLayer() }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
