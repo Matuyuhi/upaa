@@ -148,6 +148,22 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         return item
     }
 
+    /// The row is dragged as it shows, from where it is: its whole row view, placed by its frame in the table. The
+    /// picture AppKit makes on its own is built from the cell's textField, which here sits in a stack, and it jumped
+    /// up away from the pointer as the drag started.
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint,
+                   forRowIndexes rowIndexes: IndexSet) {
+        guard let row = rowIndexes.first, let view = tableView.rowView(atRow: row, makeIfNecessary: false),
+              let picture = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: picture)
+        let image = NSImage(size: view.bounds.size)
+        image.addRepresentation(picture)
+        session.enumerateDraggingItems(options: [], for: tableView, classes: [NSPasteboardItem.self],
+                                       searchOptions: [:]) { item, _, _ in
+            item.setDraggingFrame(view.frame, contents: image)
+        }
+    }
+
     /// A drop just above or just below the dragged row would leave it where it is, so it is refused: the gap that
     /// shows a drop would otherwise open beside the row as soon as the drag starts, and the row would look as if it
     /// had jumped.
