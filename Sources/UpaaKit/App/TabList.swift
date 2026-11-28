@@ -12,6 +12,8 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
     var onClose: ((Int) -> Void)?
     var onMove: ((_ from: Int, _ to: Int) -> Void)?
     private var items: [Item] = []
+    /// What the owner showed while a row was being dragged, shown once the drag ends.
+    private var pending: (items: [Item], selected: Int)?
     private let table = Table()
     /// Set while the rows are being replaced, so that the new selection is not taken as the user's.
     private var reloading = false
@@ -49,7 +51,11 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
             self.table.moveRow(at: from, to: to)
             self.reloading = false
         }
-        table.onMoved = { [weak self] from, to in self?.onMove?(from, to) }
+        table.onMoved = { [weak self] from, to in
+            guard let self else { return }
+            if from != to { self.onMove?(from, to) }
+            if let pending = self.pending { self.show(pending.items, selected: pending.selected) }
+        }
     }
 
     @available(*, unavailable)
@@ -109,9 +115,10 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
 
     typealias Item = (title: String, detail: String, unseen: Bool)
 
-    /// While a row is being dragged, the rows stay as the drag left them; the owner shows them again once it lets go.
+    /// While a row is being dragged, the rows stay as the drag left them, and the last ones shown come once it ends.
     func show(_ items: [Item], selected: Int) {
-        guard !table.dragging else { return }
+        guard !table.dragging else { return pending = (items, selected) }
+        pending = nil
         reloading = true
         // Rows rebuilt under the pointer would lose its hover, so only a change in a row rebuilds them.
         if !items.elementsEqual(self.items, by: { $0 == $1 }) {
@@ -172,7 +179,7 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
 private final class Table: NSTableView {
     /// The held row has moved one place; the table and its rows are to follow.
     var onMove: ((_ from: Int, _ to: Int) -> Void)?
-    /// The pointer let go of a row that was dragged from one place to another.
+    /// The pointer let go of a row that was dragged, to the same place or another.
     var onMoved: ((_ from: Int, _ to: Int) -> Void)?
     private var held: (from: Int, row: Int, start: CGFloat, moved: Bool)?
     var dragging: Bool { held?.moved == true }
@@ -208,7 +215,7 @@ private final class Table: NSTableView {
     override func mouseUp(with event: NSEvent) {
         guard let hold = held else { return super.mouseUp(with: event) }
         held = nil
-        if hold.row != hold.from { onMoved?(hold.from, hold.row) }
+        if hold.moved { onMoved?(hold.from, hold.row) }
     }
 }
 

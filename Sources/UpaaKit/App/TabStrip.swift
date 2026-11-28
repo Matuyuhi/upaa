@@ -18,6 +18,8 @@ final class TabStrip: NSView {
     private var animation: Timer?
     /// The tab held down: where it was, where the pointer took it, and whether it has moved yet.
     private var held: (tab: Tab, from: Int, start: CGFloat, offset: CGFloat, moved: Bool)?
+    /// What the owner showed while a tab was being dragged, shown once the drag ends.
+    private var pending: (items: [Item], selected: Int)?
 
     private static let height: CGFloat = 28
     private static let gap: CGFloat = 2
@@ -35,10 +37,13 @@ final class TabStrip: NSView {
         fatalError("init(coder:) is not used")
     }
 
+    typealias Item = (id: ObjectIdentifier, title: String, unseen: Bool)
+
     /// The tabs by their owner's identity, so that one that opens, closes or moves is told from the others. While a
-    /// tab is being dragged, the tabs stay as the drag left them; the owner shows them again once it lets go.
-    func show(_ items: [(id: ObjectIdentifier, title: String, unseen: Bool)], selected: Int) {
-        guard held?.moved != true else { return }
+    /// tab is being dragged, the tabs stay as the drag left them, and the last ones shown come once it ends.
+    func show(_ items: [Item], selected: Int) {
+        guard held?.moved != true else { return pending = (items, selected) }
+        pending = nil
         let ids = items.map(\.id)
         for tab in tabs where !ids.contains(tab.id) { tab.target = 0 }
         var order: [Tab] = items.enumerated().map { index, item in
@@ -184,6 +189,7 @@ final class TabStrip: NSView {
         }
         slide()
         if let to = open.firstIndex(of: hold.tab), to != hold.from { onMove?(hold.from, to) }
+        if let pending { show(pending.items, selected: pending.selected) }
     }
 
     override func otherMouseUp(with event: NSEvent) {
