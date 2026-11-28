@@ -66,13 +66,18 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         self.view = view
     }
 
-    /// AppKit puts the sidebar on a material that blends with what is behind the window, which hides upaa's card and
-    /// gradient. Blended within the window instead, they show through it.
+    // TEMPORARY diagnostic, removed in the next commit.
     override func viewDidAppear() {
         super.viewDidAppear()
-        var ancestor = view.superview
-        while let view = ancestor, !(view is NSVisualEffectView) { ancestor = view.superview }
-        (ancestor as? NSVisualEffectView)?.blendingMode = .withinWindow
+        var chain: [String] = []
+        var v: NSView? = view
+        while let x = v { chain.append("\(type(of: x)) \(x.frame) layerBg=\(String(describing: x.layer?.backgroundColor))"); v = x.superview }
+        FileHandle.standardError.write(("UPAA-DIAG sidebar chain:\n" + chain.joined(separator: "\n") + "\n").data(using: .utf8)!)
+        func dump(_ x: NSView, _ d: Int) {
+            FileHandle.standardError.write(("UPAA-DIAG " + String(repeating: "  ", count: d) + "\(type(of: x)) \(x.frame)\n").data(using: .utf8)!)
+            if d < 6 { x.subviews.forEach { dump($0, d + 1) } }
+        }
+        if let w = view.window?.contentView?.superview { dump(w, 0) }
     }
 
     func show(_ items: [(title: String, place: String)], selected: Int) {
