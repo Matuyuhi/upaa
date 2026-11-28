@@ -707,8 +707,10 @@ test "a zsh prompt that fills the width is drawn once after the width changes, a
 
 test "a bash prompt that fills the width is drawn once after the width changes, as upaa's startup file marks it (#69)" {
     // A login shell, as upaa starts it, so it reads tests/bash/.bash_profile. bash on the PATH, not Apple's /bin/bash.
+    // Unmarked, bash 5.2 goes back only the rows the prompt had at the old width before it redraws, which leaves the
+    // rewrapped rows above, but bash 5.3 (CI's) leaves none. So only the marked prompt is checked: it must leave nothing
+    // behind and keep the output above it.
     try skipUnless("[ \"$(command -v bash)\" != /bin/bash ]");
-    try expectPromptsLeftByResizes("HOME=\"$PWD/tests/bash\" exec bash -il", false, true);
     try expectPromptsLeftByResizes(
         "HOME=\"$PWD/tests/bash\" ENV=\"$PWD/Resources/shell-integration/bash/upaa.bash\" exec bash --posix -il",
         false,
