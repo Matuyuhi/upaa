@@ -84,7 +84,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         window.delegate = self
         window.setContentSize(NSSize(
             width: terminalSize.width + 2 * Chrome.inset + Chrome.tabPanelWidth,
-            height: terminalSize.height + 2 * Chrome.inset + Chrome.headerHeight + Chrome.footerHeight))
+            height: terminalSize.height + Chrome.headerTop + Chrome.headerHeight + Chrome.footerHeight + Chrome.inset))
         let card = Fill(background)
         ground.addSubview(card)
         card.pin(to: ground)
@@ -135,7 +135,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         column.orientation = .vertical
         column.spacing = 6
         // The top of the panel is left for the traffic lights.
-        column.edgeInsets = NSEdgeInsets(top: Chrome.headerHeight, left: 8, bottom: 10, right: 8)
+        column.edgeInsets = NSEdgeInsets(top: Chrome.headerHeight, left: 8, bottom: 8, right: 8)
         tabPanel.content.addSubview(column)
         column.pin(to: tabPanel.content)
         column.addFullWidth(heading)
@@ -148,6 +148,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         tabStrip.edgeInsets = NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)
         tabCapsule.content.addSubview(tabStrip)
         tabStrip.pin(to: tabCapsule.content)
+        tabCapsule.heightAnchor.constraint(equalToConstant: 36).isActive = true
     }
 
     private func buildHeader() {
@@ -169,6 +170,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         tools.spacing = 2
         tools.edgeInsets = NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)
         let toolbar = GlassPanel(cornerRadius: 18)
+        // A stack's insets across its alignment do not hold it open, so the capsules' heights are set.
+        toolbar.heightAnchor.constraint(equalToConstant: 36).isActive = true
         toolbar.content.addSubview(tools)
         tools.pin(to: toolbar.content)
 
@@ -466,29 +469,36 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     }
 
     private func arrange(sidePanel shown: Bool) {
+        // Showing or hiding the right panel is animated, as Xcode's inspector is; moving the tabs is not.
+        let animated = window.isVisible && arranged?.0 == vertical
         arranged = (vertical, shown)
         tabPanel.isHidden = !vertical
-        // The header lies over the top of the terminal, whose text starts below it.
-        host.topInset = (vertical ? 0 : Chrome.inset) + Chrome.headerHeight
         tabCapsule.isHidden = vertical
         titleRow.isHidden = !vertical
-        sidePanel.isHidden = !shown
         footer.isHidden = !vertical
+        if shown { sidePanel.isHidden = false }
         NSLayoutConstraint.deactivate(layout)
         let ground = window.contentView!
         let inset = Chrome.inset
-        layout = [header.heightAnchor.constraint(equalToConstant: Chrome.headerHeight)]
+        let hostTop = vertical ? inset : 0
+        // The header lies over the top of the terminal, whose text starts below it.
+        host.topInset = Chrome.headerTop + Chrome.headerHeight - hostTop
+        layout = [
+            header.topAnchor.constraint(equalTo: ground.topAnchor, constant: Chrome.headerTop),
+            header.heightAnchor.constraint(equalToConstant: Chrome.headerHeight),
+            host.topAnchor.constraint(equalTo: ground.topAnchor, constant: hostTop),
+        ]
         if vertical {
+            // The terminal's text, the title and the footer start at one line, 12 pt from the tab panel as in the design.
+            let textInset = 12 - Renderer.paddingPoints.horizontal
             layout += [
                 tabPanel.leadingAnchor.constraint(equalTo: ground.leadingAnchor, constant: inset),
                 tabPanel.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
                 tabPanel.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
                 tabPanel.widthAnchor.constraint(equalToConstant: Chrome.tabPanelWidth),
-                header.topAnchor.constraint(equalTo: host.topAnchor),
-                header.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 12),
+                header.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
                 header.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -inset - 6),
-                host.leadingAnchor.constraint(equalTo: tabPanel.trailingAnchor),
-                host.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
+                host.leadingAnchor.constraint(equalTo: tabPanel.trailingAnchor, constant: textInset),
                 host.bottomAnchor.constraint(equalTo: footer.topAnchor),
                 host.trailingAnchor.constraint(equalTo: shown ? sidePanel.leadingAnchor : ground.trailingAnchor, constant: -inset),
                 footer.leadingAnchor.constraint(equalTo: header.leadingAnchor),
@@ -502,10 +512,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
             ]
         } else {
             layout += [
-                header.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
                 header.leadingAnchor.constraint(equalTo: ground.leadingAnchor, constant: 12 + Chrome.trafficLightsWidth),
                 header.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -12),
-                host.topAnchor.constraint(equalTo: ground.topAnchor),
                 host.leadingAnchor.constraint(equalTo: ground.leadingAnchor),
                 host.trailingAnchor.constraint(equalTo: ground.trailingAnchor),
                 host.bottomAnchor.constraint(equalTo: ground.bottomAnchor),
@@ -515,7 +523,28 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
                 sidePanel.widthAnchor.constraint(equalToConstant: Chrome.sidePanelWidth),
             ]
         }
+        let before = host.frame
         NSLayoutConstraint.activate(layout)
+        guard animated else {
+            sidePanel.isHidden = !shown
+            return
+        }
+        // Lay out at the end state, then move the terminal there from where it was while the panel fades.
+        ground.layoutSubtreeIfNeeded()
+        let after = host.frame
+        host.frame = before
+        sidePanel.alphaValue = shown ? 0 : 1
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Chrome.animation
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            host.animator().frame = after
+            sidePanel.animator().alphaValue = shown ? 1 : 0
+        }, completionHandler: { [weak self] in
+            // Unless the panel was shown again meanwhile.
+            guard let self, self.arranged?.1 == false else { return }
+            self.sidePanel.isHidden = true
+            self.sidePanel.alphaValue = 1
+        })
     }
 }
 
