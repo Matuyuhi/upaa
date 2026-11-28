@@ -78,7 +78,6 @@ jobs:
           UPAA_NO_UPDATE_CHECK: "1"
         run: |
           dir=build/screenshots
-          otool -l build/upaa.app/Contents/MacOS/upaa | grep -A4 LC_BUILD_VERSION  # TEMPORARY
           mkdir -p "$dir/default/upaa" "$dir/config/upaa"
           printf '%s\n' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' > "$dir/config/upaa/config"
           # Prints the id of the window owned by the given process, to photograph that window alone.

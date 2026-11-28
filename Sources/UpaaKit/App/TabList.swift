@@ -66,18 +66,14 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         self.view = view
     }
 
-    // TEMPORARY diagnostic, removed in the next commit.
+    /// AppKit puts the sidebar on regular glass, frosted enough to hide upaa's card and gradient. Clear glass lets
+    /// them show through it.
     override func viewDidAppear() {
         super.viewDidAppear()
-        var chain: [String] = []
-        var v: NSView? = view
-        while let x = v { chain.append("\(type(of: x)) \(x.frame) layerBg=\(String(describing: x.layer?.backgroundColor))"); v = x.superview }
-        FileHandle.standardError.write(("UPAA-DIAG sidebar chain:\n" + chain.joined(separator: "\n") + "\n").data(using: .utf8)!)
-        func dump(_ x: NSView, _ d: Int) {
-            FileHandle.standardError.write(("UPAA-DIAG " + String(repeating: "  ", count: d) + "\(type(of: x)) \(x.frame)\n").data(using: .utf8)!)
-            if d < 6 { x.subviews.forEach { dump($0, d + 1) } }
-        }
-        if let w = view.window?.contentView?.superview { dump(w, 0) }
+        guard #available(macOS 26.0, *) else { return }
+        var ancestor = view.superview
+        while let view = ancestor, !(view is NSGlassEffectView) { ancestor = view.superview }
+        (ancestor as? NSGlassEffectView)?.style = .clear
     }
 
     func show(_ items: [(title: String, place: String)], selected: Int) {
