@@ -67,7 +67,6 @@ final class GlassPanel: NSView {
         if #available(macOS 26.0, *) {
             let view = NSGlassEffectView()
             view.cornerRadius = cornerRadius
-            view.tintColor = Chrome.glass
             view.contentView = content
             glass = view
         } else {
@@ -84,6 +83,21 @@ final class GlassPanel: NSView {
         }
         addSubview(glass)
         glass.pin(to: self)
+    }
+
+    /// The glass keeps the tint it is given as one fixed color, so it gets the tint for this view's light or dark mode
+    /// each time that changes. A tint set before the view is in a window resolved to light mode.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        guard #available(macOS 26.0, *), let glass = subviews.first as? NSGlassEffectView else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            glass.tintColor = NSColor(cgColor: Chrome.glass.cgColor)
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        viewDidChangeEffectiveAppearance()
     }
 
     @available(*, unavailable)
