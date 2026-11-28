@@ -44,7 +44,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     private var timer: Timer?
 
     /// Holds the selected tab's view.
-    private let host = NSView()
+    private let host = Host()
     private let tabPanel = GlassPanel(cornerRadius: 16)
     private let tabList = NSStackView()
     private let tabCapsule = GlassPanel(cornerRadius: 18)
@@ -361,13 +361,14 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         readChanges()
     }
 
-    /// Puts the tab in the host, in place of the one shown. Split views size their panes by frame, so the tab's view
-    /// follows the host by its autoresizing mask rather than constraints.
+    /// Puts the tab in the host, in place of the one shown. A pane that was in a split view keeps what the split view
+    /// set on it, so the host sizes its view directly rather than through autoresizing or constraints.
     private func show(_ tab: Tab) {
         host.subviews.forEach { $0.removeFromSuperview() }
-        tab.top.frame = host.bounds
-        tab.top.autoresizingMask = [.width, .height]
+        tab.top.translatesAutoresizingMaskIntoConstraints = true
+        tab.top.autoresizingMask = []
         host.addSubview(tab.top)
+        host.needsLayout = true
     }
 
     /// Reads the git state of the focused pane's directory, for the panel, the change count and the branch.
@@ -471,5 +472,13 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
             ]
         }
         NSLayoutConstraint.activate(layout)
+    }
+}
+
+/// Holds the selected tab's view and gives it all of its own size each time it is laid out.
+private final class Host: NSView {
+    override func layout() {
+        super.layout()
+        subviews.forEach { $0.frame = bounds }
     }
 }
