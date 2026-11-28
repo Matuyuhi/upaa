@@ -53,6 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentResizeIncrements = NSSize(
             width: Double(renderer.cellSize.width) / scale, height: Double(renderer.cellSize.height) / scale)
         let config = self.config
+        // A background the config names sets light or dark mode for the whole window; otherwise the system's does.
+        if let dark = config.backgroundIsDark { window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua) }
         let background = NSColor(name: nil) {
             let rgb = config.background(dark: $0.isDark)
             return NSColor(srgbRed: CGFloat(rgb >> 16 & 0xff) / 255, green: CGFloat(rgb >> 8 & 0xff) / 255,
