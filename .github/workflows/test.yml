@@ -139,8 +139,8 @@ jobs:
           osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
           root="$PWD/build/readme"
           mkdir -p "$root/light/upaa" "$root/dark/upaa"
-          printf '%s\n' 'window-width = 128' 'window-height = 30' > "$root/light/upaa/config"
-          printf '%s\n' 'window-width = 128' 'window-height = 30' 'foreground = #cdd6f4' 'background = #1e1e2e' > "$root/dark/upaa/config"
+          printf '%s\n' 'font-size = 12' 'window-width = 128' 'window-height = 30' > "$root/light/upaa/config"
+          printf '%s\n' 'font-size = 12' 'window-width = 128' 'window-height = 30' 'foreground = #cdd6f4' 'background = #1e1e2e' > "$root/dark/upaa/config"
           # A demo repository under the runner's home, so the paths read ~/upaa.
           git clone -q "$PWD" ~/upaa
           git -C ~/upaa checkout -q --detach "$(git rev-parse origin/main)"
@@ -153,13 +153,14 @@ jobs:
           PROMPT_COMMAND='printf "\e]0;%s\a" "${PWD##*/}"'
           n=$(cat ~/.n 2>/dev/null || echo 0); echo $((n + 1)) > ~/.n
           clear
+          w=$(tput cols); t=$((w - 14))
           colors() {
             printf '日本語の表示と入力にも対応しています\n\n'
             for i in 0 1 2 3 4 5 6 7; do printf '\e[4%sm    \e[0m' "$i"; done; echo
             for i in 0 1 2 3 4 5 6 7; do printf '\e[10%sm    \e[0m' "$i"; done; echo; echo
             for r in 0 1; do
-              for i in $(seq 0 55); do
-                h=$((i * 6 / 56)); f=$(((i * 6 % 56) * 255 / 56)); q=$((255 - f))
+              for i in $(seq 0 $((w - 3))); do
+                h=$((i * 6 / (w - 2))); f=$(((i * 6 % (w - 2)) * 255 / (w - 2))); q=$((255 - f))
                 case $h in 0) c="255;$f;80";; 1) c="$q;255;80";; 2) c="80;255;$f";; 3) c="80;$q;255";; 4) c="$f;80;255";; *) c="255;80;$q";; esac
                 printf '\e[48;2;%sm \e[0m' "$c"
               done; echo
@@ -167,11 +168,11 @@ jobs:
             echo
           }
           case "$UPAA_SHOT-$n" in
-            light-0) cd ~/upaa; git log --graph --color --format='%C(yellow)%h%C(reset) %<(44,trunc)%s' -18 ;;
+            light-0) cd ~/upaa; git log --graph --color --format="%C(yellow)%h%C(reset) %<($t,trunc)%s" -16 ;;
             light-1) cd ~/upaa/Sources ;;
             light-2) cd ~/upaa/Shaders ;;
             light-3) cd ~/upaa/core/src; colors; ls ;;
-            dark-0) cd ~/upaa; git status -s; echo; git diff --stat --color; echo; git log --color --format='%C(yellow)%h%C(reset) %<(52,trunc)%s' -6 ;;
+            dark-0) cd ~/upaa; git status -s; echo; git diff --stat --color; echo; git log --color --format="%C(yellow)%h%C(reset) %<($t,trunc)%s" -8 ;;
             dark-1) cd ~/upaa/Sources ;;
           esac
           SH
