@@ -27,6 +27,8 @@ typedef struct {
     uint16_t window_height;
     // The lines that could not be read, one per line (ASCII), or NULL. Valid while the config lives.
     const char *problems;
+    // Whether the app opens the socket that the upaa command reaches it through from a pane.
+    bool remote_control;
 } UpaaConfigValues;
 
 // Reads the text of the config file (UTF-8). Settings it does not name keep their defaults. NULL only when out of memory.
@@ -145,6 +147,8 @@ void upaa_session_resize(UpaaSession *session, uint16_t cols, uint16_t rows, uin
 bool upaa_session_take_dirty(UpaaSession *session);
 // The shell's current directory, read from the kernel. Returns its length; 0 if unknown or longer than cap.
 size_t upaa_session_cwd(UpaaSession *session, uint8_t *out, size_t cap);
+// The shell's process ID, which the upaa command names a pane by.
+int32_t upaa_session_pid(UpaaSession *session);
 // The program in the terminal's foreground when it is not the shell. Returns its name's length (0 if the name cannot be
 // read), -1 while the shell has the terminal.
 ptrdiff_t upaa_session_running(UpaaSession *session, uint8_t *out, size_t cap);
