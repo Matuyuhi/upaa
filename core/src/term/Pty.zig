@@ -19,7 +19,7 @@ pub const Size = struct {
     }
 };
 
-pub const SpawnError = error{ ForkFailed, NoShell };
+pub const SpawnError = error{ ForkFailed, NoShell, OutOfMemory };
 
 /// If command is null, starts the user's login shell as a login shell, in start_dir or else the home directory.
 /// If not null, runs /bin/sh -c command in start_dir or else the current directory (for tests and screen dumps).
@@ -35,6 +35,9 @@ pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size, zsh
         .{ loginArgv0(path, &argv0_buf), null, null, null };
     const dir: ?[*:0]const u8 = start_dir orelse if (command == null) c.getenv("HOME") else null;
     const zdotdir = if (command == null and std.mem.eql(u8, std.mem.span(argv[0].?), "-zsh")) zsh_dir else null;
+    var arena: std.heap.ArenaAllocator = .init(std.heap.c_allocator);
+    defer arena.deinit();
+    const env = try childEnv(arena.allocator(), zdotdir);
 
     var ws = size.winsize();
     var master: c_int = -1;
@@ -43,15 +46,38 @@ pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size, zsh
     if (pid == 0) {
         // Child process. From here to exec, call only async-signal-safe functions.
         if (dir) |d| _ = c.chdir(d);
-        _ = c.setenv("TERM", "xterm-256color", 1);
-        if (zdotdir) |z| {
-            if (c.getenv("ZDOTDIR")) |old| _ = c.setenv("UPAA_ZDOTDIR", old, 1);
-            _ = c.setenv("ZDOTDIR", z, 1);
-        }
-        _ = c.execv(path, @ptrCast(&argv));
+        _ = c.execve(path, @ptrCast(&argv), @ptrCast(env.ptr));
         c._exit(127);
     }
     return .{ .master = master, .child = pid };
+}
+
+/// The child's environment: this process's, with TERM set, and with ZDOTDIR set to zdotdir if it is not null, the old
+/// value moved to UPAA_ZDOTDIR. Built before fork, because setenv may allocate.
+fn childEnv(arena: std.mem.Allocator, zdotdir: ?[*:0]const u8) error{OutOfMemory}![:null]?[*:0]const u8 {
+    const environ: [*:null]?[*:0]const u8 = @ptrCast(c._NSGetEnviron().*);
+    const count = std.mem.len(environ);
+    // Room for every entry, TERM, ZDOTDIR and the null at the end.
+    const env = try arena.allocSentinel(?[*:0]const u8, count + 3, null);
+    var n: usize = 0;
+    for (environ[0..count]) |entry| {
+        const s = std.mem.span(entry.?);
+        if (std.mem.startsWith(u8, s, "TERM=")) continue;
+        if (zdotdir != null and std.mem.startsWith(u8, s, "UPAA_ZDOTDIR=")) continue;
+        env[n] = if (zdotdir != null and std.mem.startsWith(u8, s, "ZDOTDIR="))
+            (try std.fmt.allocPrintSentinel(arena, "UPAA_{s}", .{s}, 0)).ptr
+        else
+            entry;
+        n += 1;
+    }
+    env[n] = "TERM=xterm-256color";
+    n += 1;
+    if (zdotdir) |z| {
+        env[n] = (try std.fmt.allocPrintSentinel(arena, "ZDOTDIR={s}", .{z}, 0)).ptr;
+        n += 1;
+    }
+    env[n] = null;
+    return env[0..n :null];
 }
 
 pub fn resize(pty: Pty, size: Size) void {
@@ -124,4 +150,24 @@ fn loginArgv0(path: [*:0]const u8, buf: []u8) [*:0]const u8 {
 test "login argv0" {
     var buf: [256]u8 = undefined;
     try std.testing.expectEqualStrings("-zsh", std.mem.span(loginArgv0("/bin/zsh", &buf)));
+}
+
+test "the child's environment sets TERM and ZDOTDIR once each" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    var terms: usize = 0;
+    var zdotdirs: usize = 0;
+    for (try childEnv(arena.allocator(), "/upaa/zsh")) |entry| {
+        const s = std.mem.span(entry.?);
+        if (std.mem.startsWith(u8, s, "TERM=")) {
+            try std.testing.expectEqualStrings("TERM=xterm-256color", s);
+            terms += 1;
+        }
+        if (std.mem.startsWith(u8, s, "ZDOTDIR=")) {
+            try std.testing.expectEqualStrings("ZDOTDIR=/upaa/zsh", s);
+            zdotdirs += 1;
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 1), terms);
+    try std.testing.expectEqual(@as(usize, 1), zdotdirs);
 }

@@ -1,3 +1,4 @@
+#include <crt_externs.h>
 #include <errno.h>
 #include <libproc.h>
 #include <poll.h>
