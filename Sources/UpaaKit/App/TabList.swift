@@ -148,19 +148,26 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         return item
     }
 
+    /// A drop just above or just below the dragged row would leave it where it is, so it is refused: the gap that
+    /// shows a drop would otherwise open beside the row as soon as the drag starts, and the row would look as if it
+    /// had jumped.
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        guard info.draggingSource as? NSTableView === table else { return [] }
+        guard info.draggingSource as? NSTableView === table, let from = dragged(info), row != from, row != from + 1
+        else { return [] }
         tableView.setDropRow(row, dropOperation: .above)
         return .move
     }
 
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
                    dropOperation: NSTableView.DropOperation) -> Bool {
-        guard let from = info.draggingPasteboard.string(forType: Self.row).flatMap(Int.init) else { return false }
-        let to = from < row ? row - 1 : row
-        if to != from { onMove?(from, to) }
+        guard let from = dragged(info) else { return false }
+        onMove?(from, from < row ? row - 1 : row)
         return true
+    }
+
+    private func dragged(_ info: NSDraggingInfo) -> Int? {
+        info.draggingPasteboard.string(forType: Self.row).flatMap(Int.init)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
