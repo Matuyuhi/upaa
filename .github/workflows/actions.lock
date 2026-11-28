@@ -9,6 +9,9 @@ workflows:
         - 'actions/attest-build-provenance@v4.2.2'
         - 'actions/checkout@v7.0.1'
         - 'anthropics/claude-code-action@v1.0.290'
+    '.github/workflows/review.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'anthropics/claude-code-action@v1.0.290'
     '.github/workflows/test.yml':
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
