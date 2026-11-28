@@ -199,7 +199,8 @@ final class TabStrip: NSView {
     }
 }
 
-/// One tab along the top: its name, and a close button at its left while the pointer is on it.
+/// One tab along the top: its name, and a close button at its left while the pointer is on it. The tab draws its name
+/// and its background itself, measured and drawn with the same font, so that a name that fits is never cut short.
 private final class Tab: NSView {
     let id: ObjectIdentifier
     /// 1 while the tab is open, 0 once it is closing, and how far it has come toward that.
@@ -207,37 +208,35 @@ private final class Tab: NSView {
     var shown: CGFloat = 0
     var onClose: (() -> Void)?
     var title = "" {
-        didSet { label.stringValue = title }
+        didSet { needsDisplay = true }
     }
     var isSelected = false {
-        didSet { update() }
+        didSet { needsDisplay = true }
     }
 
-    private let back = Fill(.clear, cornerRadius: 14)
-    private let label = Chrome.label("", size: 12)
     private let close = NSButton()
     private var hovering = false {
-        didSet { update() }
+        didSet {
+            close.isHidden = !hovering
+            needsDisplay = true
+        }
     }
 
     init(id: ObjectIdentifier) {
         self.id = id
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.masksToBounds = true
-        label.lineBreakMode = .byTruncatingTail
-        label.alignment = .center
         close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "閉じる")?
             .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
         close.isBordered = false
+        close.isHidden = true
         close.contentTintColor = .secondaryLabelColor
         close.toolTip = "タブを閉じる (⌘W)"
         close.target = self
         close.action = #selector(closeTab)
-        for view in [back, label, close] { addSubview(view) }
+        addSubview(close)
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
                                        owner: self, userInfo: nil))
-        update()
     }
 
     @available(*, unavailable)
@@ -245,25 +244,35 @@ private final class Tab: NSView {
         fatalError("init(coder:) is not used")
     }
 
-    /// The name's width, in the selected tab's weight so that selecting a tab does not move the others, with room for
-    /// the close button on each side, so that the name stays in the middle, and for the label's own inset.
-    var naturalWidth: CGFloat {
-        ceil((title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]).width) + 48
+    /// The name's width in the selected tab's weight, so that selecting a tab does not move the others, with room for
+    /// the close button on each side, so that the name stays in the middle.
+    var naturalWidth: CGFloat { ceil(name(selected: true).size().width) + 44 }
+
+    private func name(selected: Bool) -> NSAttributedString {
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        style.lineBreakMode = .byTruncatingTail
+        return NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: selected ? .semibold : .regular),
+            .foregroundColor: NSColor.labelColor, .paragraphStyle: style,
+        ])
     }
 
-    private func update() {
-        label.font = .systemFont(ofSize: 12, weight: isSelected ? .semibold : .regular)
-        back.color = isSelected ? Chrome.pill : hovering ? Chrome.hover : .clear
-        close.isHidden = !hovering
+    override func draw(_ dirtyRect: NSRect) {
+        let back = isSelected ? Chrome.pill : hovering ? Chrome.hover : .clear
+        back.setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        let name = name(selected: isSelected)
+        let height = ceil(name.size().height)
+        name.draw(with: NSRect(x: 22, y: (bounds.height - height) / 2, width: max(0, bounds.width - 44), height: height),
+                  options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
     }
 
-    /// The strip sets the tab's frame as it animates, and the parts follow it at once, not on a later layout pass.
+    /// The strip sets the tab's frame as it animates; the close button and the drawing follow it at once.
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        back.frame = bounds
         close.frame = NSRect(x: 6, y: (bounds.height - 16) / 2, width: 16, height: 16)
-        let height = label.intrinsicContentSize.height
-        label.frame = NSRect(x: 22, y: (bounds.height - height) / 2, width: max(0, bounds.width - 44), height: height)
+        needsDisplay = true
     }
 
     /// Everything but the close button goes to the strip, which tells a click from a drag.
