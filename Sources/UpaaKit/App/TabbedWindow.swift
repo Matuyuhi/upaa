@@ -35,6 +35,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private let makeTerminal: (String?) -> TerminalView?
     private var tabs: [Tab] = []
     private var selected = 0
+    /// Closed tabs, the last closed at the end: where each was in the order and its focused pane's directory.
+    private var closed: [(index: Int, cwd: String)] = []
     /// The window closed (its last tab closed, or the window itself).
     var onClose: (() -> Void)?
     private var timer: Timer?
@@ -398,6 +400,16 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         select(selected + 1)
     }
 
+    /// Cmd-Shift-T. Opens the last closed tab again in its place, with a new shell in its directory; the program that
+    /// ran in it and its scrollback are gone.
+    @objc func reopenClosedTab(_ sender: Any?) {
+        guard let last = closed.popLast(), let terminal = makeTerminal(last.cwd) else { return NSSound.beep() }
+        watch(terminal)
+        let index = min(last.index, tabs.count)
+        tabs.insert(Tab(terminal), at: index)
+        select(index)
+    }
+
     /// Closes the focused pane, and the tab with its last pane, asking first while it runs a program.
     @objc func closePane(_ sender: Any?) {
         let pane = tabs[selected].focus
@@ -547,7 +559,9 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         refresh()
     }
 
+    /// A tab whose shell has exited has no directory to open again in, and is not kept for Cmd-Shift-T.
     private func closeTab(at index: Int) {
+        if let cwd = tabs[index].focus.session.cwd { closed.append((index, cwd)) }
         tabs[index].top.removeFromSuperview()
         tabs.remove(at: index)
         guard !tabs.isEmpty else { return window.close() }

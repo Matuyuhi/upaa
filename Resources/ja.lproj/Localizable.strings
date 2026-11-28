@@ -11,6 +11,7 @@
 "File" = "ファイル";
 "New Window" = "新規ウインドウ";
 "New Tab" = "新規タブ";
+"Reopen Closed Tab" = "閉じたタブを開き直す";
 "Split Right" = "縦に分割";
 "Split Down" = "横に分割";
 "Close" = "閉じる";
