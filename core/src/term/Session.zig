@@ -100,6 +100,8 @@ pub const Options = struct {
     command: ?[*:0]const u8 = null,
     /// Directory to start in. null means the home directory for the login shell, the current one for a command.
     cwd: ?[*:0]const u8 = null,
+    /// upaa's zsh startup files, as for Pty.spawn.
+    zsh_dir: ?[*:0]const u8 = null,
     callbacks: Callbacks = .{},
 };
 
@@ -145,7 +147,7 @@ pub fn create(opts: Options) !*Session {
         _ = c.close(fd);
     };
 
-    const pty = try Pty.spawn(opts.command, opts.cwd, opts.size);
+    const pty = try Pty.spawn(opts.command, opts.cwd, opts.size, opts.zsh_dir);
     errdefer pty.deinit();
 
     self.* = .{
@@ -571,6 +573,59 @@ test "resize is visible to the child" {
     self.write("stty size\n");
     var out: [4096]u8 = undefined;
     try self.waitForText("30 100", &out);
+}
+
+test "a zsh prompt that fills the width is drawn once after the width changes, as upaa's startup files mark it (#59)" {
+    // Without the marks the terminal rewraps the old prompt and zsh redraws below what is left of it. Checking that
+    // shows the test reproduces the bug.
+    try std.testing.expect(try promptsLeftByResizes("ZDOTDIR=\"$PWD/tests/zsh\" exec zsh -i") > 0);
+    try std.testing.expectEqual(@as(usize, 0), try promptsLeftByResizes(
+        "UPAA_ZDOTDIR=\"$PWD/tests/zsh\" ZDOTDIR=\"$PWD/Resources/shell-integration/zsh\" exec zsh -i",
+    ));
+}
+
+/// Starts zsh with the test prompt (tests/zsh/.zshrc), runs a command, changes the width a few times, and returns how
+/// many more prompts are on screen than before the changes.
+fn promptsLeftByResizes(command: [*:0]const u8) !usize {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = command });
+    defer self.destroy();
+    var out: [8192]u8 = undefined;
+    try self.waitForPrompt(80, &out);
+
+    // From the second prompt on, the marks come from PS1, which is how they are drawn again on each redraw. The first
+    // prompt stays above, as an earlier prompt does, and is rewrapped like any other line. (A clear would leave it in
+    // the scrollback, where a resize can bring it back.) The output is computed, so the typed command is not taken for
+    // it.
+    self.write("echo done-$((40+2))\n");
+    try self.waitForText("done-42", &out);
+    var tries: usize = 0;
+    while (try self.countPrompts(&out) < 2) : (tries += 1) {
+        if (tries == 500) return error.Timeout;
+        _ = c.usleep(10 * 1000);
+    }
+
+    // The last width is not 80, where the first prompt alone would match waitForPrompt.
+    for ([_]u16{ 50, 70, 40, 60 }) |cols| {
+        self.resize(.{ .cols = cols, .rows = 24 }, 8, 16);
+        try self.waitForPrompt(cols, &out);
+    }
+    _ = c.usleep(200 * 1000);
+    return try self.countPrompts(&out) -| 2;
+}
+
+fn countPrompts(self: *Session, out: []u8) !usize {
+    const n = self.plainText(out) orelse return error.FormatFailed;
+    return std.mem.count(u8, out[0..@min(n, out.len)], "left");
+}
+
+/// Waits until zsh has drawn the test prompt's first line for this width: "left", dashes, "right", one column short.
+fn waitForPrompt(self: *Session, cols: u16, out: []u8) !void {
+    var line: [256]u8 = undefined;
+    const dashes = cols - 10;
+    @memcpy(line[0..4], "left");
+    @memset(line[4..][0..dashes], '-');
+    @memcpy(line[4 + dashes ..][0..5], "right");
+    try self.waitForText(line[0 .. dashes + 9], out);
 }
 
 test "a program the shell runs in the foreground is told from the shell" {
