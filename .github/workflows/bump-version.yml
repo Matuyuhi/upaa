@@ -1,11 +1,11 @@
 name: bump-version
 
 # Bumps .version in build.zig.zon and commits it to main. Nothing else changes.
-# main takes only commits that test.yml's lockfile and test checks passed on (the "main PR" ruleset). A push to main
-# was refused even with both checks passed on the commit, and a push with the workflow's own token starts no workflow,
-# so the commit goes to a branch with a pull request, test.yml is run on it by hand (which that token may do), and the
-# pull request is merged once both checks pass. Opening it needs "Allow GitHub Actions to create and approve pull
-# requests" (Settings > Actions > General).
+# main takes only commits that test.yml's lockfile and test passed on (the "main PR" ruleset). A push with the
+# workflow's own token starts no workflow, so the commit goes to a branch and test.yml is run on it by hand (which that
+# token may do). Checks from a workflow_dispatch run do not count for the ruleset (GitHub's "Troubleshooting required
+# status checks"), so once both pass, their results are set on the commit as commit statuses of the same names, which
+# do, and main moves to it.
 # release.yml calls this after each release with part=patch, so main always holds the next version.
 # Run it by hand (gh workflow run bump-version.yml -f part=minor) to move to a new minor or major version.
 on:
@@ -32,7 +32,7 @@ jobs:
     permissions:
       contents: write
       actions: write
-      pull-requests: write
+      statuses: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -60,10 +60,7 @@ jobs:
           git commit -m "Bump version to $next" build.zig.zon
           branch="bump-version/$next"
           git push origin "HEAD:refs/heads/$branch"
-          # Deleting the branch closes the pull request; a merged one has already lost its branch.
-          trap 'git push origin --delete "$branch" || true' EXIT
-          pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls" -f title="Bump version to $next" -f head="$branch" \
-            -f base=main -f body="Made by bump-version.yml; it merges itself once the tests pass." --jq .number)"
+          trap 'git push origin --delete "$branch"' EXIT
           gh workflow run test.yml --ref "$branch"
           sha="$(git rev-parse HEAD)"
           for check in lockfile test; do
@@ -74,6 +71,7 @@ jobs:
               sleep 30
             done
             [ "$result" = success ] || { echo "$check: $result"; exit 1; }
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$sha" -f state=success -f context="$check" --silent
           done
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$pr/merge" -f merge_method=squash -f sha="$sha"
+          git push origin HEAD:main
           echo "$current -> $next"
