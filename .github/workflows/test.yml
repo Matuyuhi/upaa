@@ -91,13 +91,22 @@ jobs:
               print(id)
           }
           SWIFT
-          for name in default config top ja dark; do
+          # A repository with changed lines wider than the right panel, for the changes shot.
+          repo="$PWD/$dir/repo"
+          git init -q "$repo"
+          printf '%s\n' 'let panel = ChangesPanel()' 'panel.refresh(directory: root)' > "$repo/Sample.swift"
+          git -C "$repo" add . && git -C "$repo" -c user.name=ci -c user.email=ci@localhost commit -qm base
+          printf '%s\n' 'let panel = ChangesPanel(frame: NSRect(x: 0, y: 0, width: Chrome.sidePanelWidth, height: 400))' \
+            '// 長い行はパネルの幅で折り返し、横にスクロールしなくても最後まで読める。' 'panel.refresh(directory: root)' > "$repo/Sample.swift"
+          for name in default config top ja changes dark; do
             # top: no config file, with the tab list hidden (Cmd-B), so the tabs are in the toolbar, and a second tab opened there (Cmd-T).
+            # changes: no config file, in the repository above, with the right panel shown (Cmd-J).
             # ja: no config file, in Japanese, and its Settings window (Cmd-,) as well. The others are in English.
             # dark: no config file, with the runner switched to dark mode.
             conf="$name"
             lang=en
             [ "$name" = top ] && conf=default
+            [ "$name" = changes ] && conf=default
             if [ "$name" = ja ]; then conf=default; lang=ja; fi
             if [ "$name" = dark ]; then
               conf=default
@@ -115,6 +124,14 @@ jobs:
                 -e 'delay 1' \
                 -e 'tell application "System Events" to keystroke "t" using command down' || echo "could not press Cmd-B, Cmd-T"
               sleep 2
+            fi
+            if [ "$name" = changes ]; then
+              osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
+                -e "tell application \"System Events\" to keystroke \"cd $repo && clear\"" \
+                -e 'tell application "System Events" to key code 36' \
+                -e 'delay 1' \
+                -e 'tell application "System Events" to keystroke "j" using command down' || echo "could not type cd, Cmd-J"
+              sleep 3
             fi
             id="$(swift "$dir/window.swift" "$pid")"
             [ -n "$id" ] || { echo "upaa opened no window ($name)"; exit 1; }
@@ -211,6 +228,7 @@ jobs:
             "With a config file: ![config]($url/config.png)" '' \
             "Tabs along the top (Cmd-B): ![top]($url/top.png)" '' \
             "In Japanese: ![ja]($url/ja.png)" '' \
+            "Changes panel with lines wider than it (Cmd-J): ![changes]($url/changes.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" > ../comment.md
           if [ -f ../shots/settings.png ]; then printf '\n%s\n' "Settings (Cmd-,): ![settings]($url/settings.png)" >> ../comment.md; fi
           if [ -f ../shots/settings-ja.png ]; then printf '\n%s\n' "Settings in Japanese: ![settings-ja]($url/settings-ja.png)" >> ../comment.md; fi
