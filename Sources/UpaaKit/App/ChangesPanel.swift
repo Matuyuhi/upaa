@@ -20,8 +20,8 @@ final class ChangesPanel: NSView {
         var diff: [Substring]
     }
 
-    /// After each read: the number of changed files and the branch, both nil outside a git repository.
-    var onUpdate: ((_ count: Int?, _ branch: String?) -> Void)?
+    /// After each read: the branch, nil outside a git repository.
+    var onUpdate: ((_ branch: String?) -> Void)?
 
     private var state: State?
     private var selectedPath: String?
@@ -88,7 +88,7 @@ final class ChangesPanel: NSView {
     }
 
     private func apply(_ new: State?) {
-        onUpdate?(new?.files.count, new?.branch)
+        onUpdate?(new?.branch)
         guard new != state else { return }
         state = new
         show(new)

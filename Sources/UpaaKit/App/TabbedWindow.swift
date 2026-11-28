@@ -55,9 +55,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     private let branchCapsule = Fill(Chrome.pill, cornerRadius: 9)
     /// The tab's name, directory and branch, when the tabs are down the side.
     private let titleRow = NSStackView()
-    private let changesLabel: NSTextField
-    private let changesButton: Clickable
-    private let shellButton: Clickable
+    private let panelButton = TabbedWindow.toolButton("sidebar.right", "右パネル (⌘J)")
     private let sidePanel = GlassPanel(cornerRadius: 16)
     private let changes = ChangesPanel()
 
@@ -65,13 +63,6 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     init(window: NSWindow, first: TerminalView, background: NSColor, makeTerminal: @escaping (String?) -> TerminalView?) {
         self.window = window
         self.makeTerminal = makeTerminal
-        let toolButton = { (label: NSTextField) in
-            Clickable(cornerRadius: 14, selected: false, [label], padding: NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12))
-        }
-        let changesLabel = Chrome.label("変更", size: 12)
-        self.changesLabel = changesLabel
-        changesButton = toolButton(changesLabel)
-        shellButton = toolButton(Chrome.label("シェル", size: 12))
         super.init()
 
         // The window was made to fit the terminal; the chrome around it is added here.
@@ -102,8 +93,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         buildHeader()
         sidePanel.content.addSubview(changes)
         changes.pin(to: sidePanel.content)
-        changes.onUpdate = { [weak self] count, branch in
-            self?.changesLabel.stringValue = count.map { "変更 \($0)" } ?? "変更"
+        changes.onUpdate = { [weak self] branch in
             self?.branchLabel.stringValue = branch ?? ""
             self?.refresh()
         }
@@ -161,25 +151,15 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         }
         titleRow.spacing = 6
 
-        let hide = NSButton(image: NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: "右パネル")!,
-                            target: self, action: #selector(toggleSidePanel(_:)))
-        hide.isBordered = false
-        hide.contentTintColor = .secondaryLabelColor
-        changesButton.onClick = { [weak self] in
-            guard let self, !self.sidePanelWanted else { return }
-            self.toggleSidePanel(nil)
-        }
-        shellButton.onClick = { [weak self] in
-            guard let self else { return }
-            // Off, it puts a shell beside the pane; on, it moves to the other pane.
-            self.tabs[self.selected].panes.count > 1 ? self.movePane(by: 1) : self.split(vertical: true)
-        }
-        let tools = NSStackView(views: [changesButton, shellButton, hide])
+        let splitRight = Self.toolButton("rectangle.split.2x1", "縦に分割 (⌘D)")
+        splitRight.onClick = { [weak self] in self?.split(vertical: true) }
+        let splitDown = Self.toolButton("rectangle.split.1x2", "横に分割 (⇧⌘D)")
+        splitDown.onClick = { [weak self] in self?.split(vertical: false) }
+        panelButton.onClick = { [weak self] in self?.toggleSidePanel(nil) }
+        let tools = NSStackView(views: [splitRight, splitDown, panelButton])
         tools.spacing = 2
         tools.edgeInsets = NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)
-        for view in tools.arrangedSubviews { view.heightAnchor.constraint(equalToConstant: 28).isActive = true }
-        hide.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        let toolbar = GlassPanel(cornerRadius: 17)
+        let toolbar = GlassPanel(cornerRadius: 18)
         toolbar.content.addSubview(tools)
         tools.pin(to: toolbar.content)
 
@@ -187,6 +167,18 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         space.setContentHuggingPriority(.init(1), for: .horizontal)
         for view in [tabCapsule, titleRow, space, toolbar] as [NSView] { header.addArrangedSubview(view) }
         header.spacing = 8
+    }
+
+    /// A round toolbar button with a symbol, as the design's. The name shows on hover.
+    private static func toolButton(_ symbol: String, _ name: String) -> Clickable {
+        let image = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: name)!)
+        image.symbolConfiguration = .init(pointSize: 13, weight: .regular)
+        image.contentTintColor = .labelColor
+        let button = Clickable(cornerRadius: 15, selected: false, [image], padding: NSEdgeInsets())
+        button.toolTip = name
+        button.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        return button
     }
 
     private func plusButton(size: CGFloat) -> NSButton {
@@ -413,8 +405,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         host.needsLayout = true
         let panes = tab.panes
         for pane in panes { pane.alphaValue = panes.count == 1 || pane === tab.focus ? 1 : Chrome.inactivePaneAlpha }
-        shellButton.isOn = panes.count > 1
-        changesButton.isOn = sidePanelShown
+        panelButton.isOn = sidePanelShown
     }
 
     /// Down the side: the tab's name, and the directory of its focused pane. At the top: the name alone.
