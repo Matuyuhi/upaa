@@ -59,8 +59,8 @@ jobs:
             ~/.cache/zig
             .zig-cache
             .build
-          key: build-${{ runner.os }}-${{ hashFiles('build.zig', 'build.zig.zon', 'Package.swift', 'core/**', 'Sources/**') }}
-          restore-keys: build-${{ runner.os }}-
+          key: build-${{ runner.os }}-zig-${{ env.ZIG_VERSION }}-${{ hashFiles('build.zig', 'build.zig.zon', 'Package.swift', 'core/**', 'Sources/**') }}
+          restore-keys: build-${{ runner.os }}-zig-${{ env.ZIG_VERSION }}-
 
       # Zig's own build, kept in the cache by its version. Homebrew's needs LLVM too, which took 35 to 55 seconds each run.
       - name: Zig cache
@@ -86,7 +86,6 @@ jobs:
           echo "$HOME/zig" >> "$GITHUB_PATH"
           # libghostty-vt 1.0.x and build.zig assume Zig 0.17.x.
           ~/zig/zig version | grep -q '^0\.17\.' || { echo "Zig 0.17.x is required: $(~/zig/zig version)"; exit 1; }
-          ~/zig/zig env
 
       - name: Install Metal Toolchain
         run: xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
