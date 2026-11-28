@@ -178,8 +178,13 @@ private final class Table: NSTableView {
         // Above the first row or below the last, the row goes to that end; between two rows, it stays.
         let last = numberOfRows - 1
         let under = y < 0 ? 0 : y >= rect(ofRow: last).maxY ? last : row(at: NSPoint(x: bounds.midX, y: y))
+        // The table's own row animation is longer, and lagged behind the pointer; this is the one the tabs along the
+        // top slide with.
         if under >= 0, under != hold.row {
-            onMove?(hold.row, under)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Chrome.animation
+                onMove?(hold.row, under)
+            }
             hold.row = under
         }
         held = hold
