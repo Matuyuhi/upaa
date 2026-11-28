@@ -182,8 +182,19 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        Self.saveFrame(of: window)
         timer?.invalidate()
         onClose?()
+    }
+
+    /// The name of the frame that a launch opens its window at when the system brings back none.
+    static let frameName = "upaa"
+
+    /// Keeps where the window is and its size for the next launch, unless it is full screen, which fills its screen.
+    /// The window closed or quit last wins.
+    static func saveFrame(of window: NSWindow) {
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        window.saveFrame(usingName: frameName)
     }
 
     /// The middle of the window: the selected tab, and the footer under it with the shell, the focused pane's size and
