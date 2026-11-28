@@ -55,9 +55,6 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
 
         // The window was made to fit the terminal; the parts around it are added here.
         let terminalSize = window.contentRect(forFrameRect: window.frame).size
-        // Set before the controller loads its view.
-        columns.splitView = Columns()
-        columns.splitView.isVertical = true
         // Sized to the terminal, so that setting the controller does not shrink the window below its title bar.
         let root = NSViewController()
         root.view = Backdrop(frame: NSRect(origin: .zero, size: terminalSize))
@@ -454,9 +451,4 @@ private final class Host: NSView {
 private func terminals(in view: NSView) -> [TerminalView] {
     if let terminal = view as? TerminalView { return [terminal] }
     return (view as? NSSplitView)?.arrangedSubviews.flatMap(terminals(in:)) ?? []
-}
-
-/// The window's columns. The tab list's glass and the right panel mark their own edges, so the dividers draw nothing.
-private final class Columns: NSSplitView {
-    override func drawDivider(in rect: NSRect) {}
 }

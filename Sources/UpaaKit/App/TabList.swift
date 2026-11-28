@@ -49,13 +49,14 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         scroll.autohidesScrollers = true
 
         let view = NSView(frame: NSRect(x: 0, y: 0, width: Chrome.tabPanelWidth, height: 400))
-        // The panel runs up behind the traffic lights, as AppKit's floating sidebar does.
+        // The panel runs up behind the traffic lights, as AppKit's floating sidebar does. The list sits over it, beside
+        // it in the view, since the glass places its own content only when it is laid out.
         let panel = GlassPanel(cornerRadius: 16)
         view.addSubview(panel)
         panel.pin(to: view, inset: 8)
         for subview in [heading, scroll] {
             subview.translatesAutoresizingMaskIntoConstraints = false
-            panel.content.addSubview(subview)
+            view.addSubview(subview)
         }
         // The safe area keeps the heading below the traffic lights and the toolbar.
         NSLayoutConstraint.activate([
