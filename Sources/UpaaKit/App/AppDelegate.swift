@@ -101,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watchConfig()
         let new = Config.load()
         guard new.text != config.text else { return }
+        // A size chosen in the settings or written in the file is the size to show, not one to add Cmd-+/- to.
+        if new.fontSize != config.fontSize { zoom = 0 }
         config = new
         fontFamily = config.fontFamily
         for terminal in terminals.allObjects {
