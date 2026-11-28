@@ -4,7 +4,7 @@ name: upstream-check
 # Dependabot cannot update these: a new libghostty-vt needs its signature checked and a new SHA-256 and license list,
 # and a new Zig minor version usually needs code changes (CI installs the latest Zig from Homebrew and stops if it
 # is not 0.17.x). An issue with the same title, open or closed, is not opened again, so closing one dismisses that version.
-# No action is used, so the job needs no checkout and no entry in actions.lock.
+# No action is used, so the job needs no checkout, and its entry in actions.lock lists nothing.
 on:
   schedule:
     - cron: "0 0 * * 1"
