@@ -39,8 +39,13 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The tab list, the selected tab and the right panel, side by side.
     private let columns = NSSplitViewController()
     private let tabList: TabList
-    /// The tabs in the toolbar while the tab list is hidden.
+    /// The tabs in the toolbar while the tab list is hidden, the names they show, and the animation of a segment's
+    /// width while a tab opens or closes.
     private let tabStrip = NSSegmentedControl(labels: [], trackingMode: .selectOne, target: nil, action: nil)
+    private var stripTitles: [String] = []
+    private var stripAnimation: Timer?
+    /// The host's left and right edges, moved in from the window's edges while the tabs are along the top.
+    private var hostEdges: [NSLayoutConstraint] = []
     /// Holds the selected tab's view.
     private let host = Host()
     private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
@@ -144,13 +149,13 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
             subview.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(subview)
         }
-        NSLayoutConstraint.activate([
+        hostEdges = [host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                     view.trailingAnchor.constraint(equalTo: host.trailingAnchor)]
+        NSLayoutConstraint.activate(hostEdges + [
             host.topAnchor.constraint(equalTo: view.topAnchor),
-            host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             host.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
-            footer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Renderer.paddingPoints.horizontal),
+            footer.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
+            footer.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -Renderer.paddingPoints.horizontal),
             footer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             footer.heightAnchor.constraint(equalToConstant: Chrome.footerHeight),
         ])
@@ -241,6 +246,46 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
             }
         }
         window.titleVisibility = top ? .hidden : .visible
+        // Design A3 puts the text 18 from the window's edges with the tabs along the top; the terminal keeps 8 itself.
+        hostEdges.forEach { $0.constant = top ? 10 : 0 }
+    }
+
+    /// Shows the tabs' names in the strip. A tab that opens widens from nothing and one that closes narrows to nothing,
+    /// as tabs do in Safari; the other segments move aside as it does.
+    private func showStrip(_ titles: [String]) {
+        let old = stripTitles
+        stripTitles = titles
+        if titles.count == old.count, stripAnimation?.isValid == true { return }
+        stripAnimation?.invalidate()
+        guard abs(titles.count - old.count) == 1, !old.isEmpty else { return label(titles, selected: selected) }
+        // Where the two lists part: the tab that opened or closed, or one with the same name, which looks the same.
+        let index = (0..<min(old.count, titles.count)).first { old[$0] != titles[$0] } ?? min(old.count, titles.count)
+        let opening = titles.count > old.count
+        // A closing tab keeps its segment, after the chosen one, until it has narrowed.
+        label(opening ? titles : old, selected: opening || selected < index ? selected : selected + 1)
+        let full = tabStrip.intrinsicContentSize.width
+        tabStrip.setWidth(1, forSegment: index)
+        let width = full - tabStrip.intrinsicContentSize.width + 1
+        let (from, to): (CGFloat, CGFloat) = opening ? (1, width) : (width, 1)
+        let start = CACurrentMediaTime()
+        stripAnimation = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            let t = CGFloat(min(1, (CACurrentMediaTime() - start) / Chrome.animation))
+            self.tabStrip.setWidth(from + (to - from) * t * t * (3 - 2 * t), forSegment: index)
+            guard t == 1 else { return }
+            timer.invalidate()
+            self.label(self.stripTitles, selected: self.selected)
+        }
+    }
+
+    /// Puts the names in the strip at their own widths, a long name cut short.
+    private func label(_ titles: [String], selected: Int) {
+        tabStrip.segmentCount = titles.count
+        for (index, title) in titles.enumerated() {
+            tabStrip.setLabel(title.count > 24 ? String(title.prefix(23)) + "…" : title, forSegment: index)
+            tabStrip.setWidth(0, forSegment: index)
+        }
+        tabStrip.selectedSegment = selected
     }
 
     @objc private func pickTab(_ sender: NSSegmentedControl) {
@@ -435,11 +480,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         window.subtitle = [place(of: tab), branch ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
         let titles = tabs.map { $0.focus.session.title ?? "upaa" }
         tabList.show(zip(titles, tabs).map { (title: $0, place: place(of: $1)) }, selected: selected)
-        tabStrip.segmentCount = titles.count
-        for (index, title) in titles.enumerated() {
-            tabStrip.setLabel(title.count > 24 ? String(title.prefix(23)) + "…" : title, forSegment: index)
-        }
-        tabStrip.selectedSegment = selected
+        showStrip(titles)
 
         // A split or a closed pane can change which panes are along the top.
         host.needsLayout = true

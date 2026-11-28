@@ -90,7 +90,7 @@ jobs:
           }
           SWIFT
           for name in default config top dark; do
-            # top: no config file, with a second tab (Cmd-T) and the tab list hidden (Cmd-B), so the tabs are in the toolbar.
+            # top: no config file, with the tab list hidden (Cmd-B), so the tabs are in the toolbar, and a second tab opened there (Cmd-T).
             # dark: no config file, with the runner switched to dark mode.
             conf="$name"
             [ "$name" = top ] && conf=default
@@ -104,9 +104,9 @@ jobs:
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
             if [ "$name" = top ]; then
               osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
-                -e 'tell application "System Events" to keystroke "t" using command down' \
+                -e 'tell application "System Events" to keystroke "b" using command down' \
                 -e 'delay 1' \
-                -e 'tell application "System Events" to keystroke "b" using command down' || echo "could not press Cmd-T, Cmd-B"
+                -e 'tell application "System Events" to keystroke "t" using command down' || echo "could not press Cmd-B, Cmd-T"
               sleep 2
             fi
             id="$(swift "$dir/window.swift" "$pid")"
