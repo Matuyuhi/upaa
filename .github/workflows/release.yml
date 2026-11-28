@@ -120,6 +120,7 @@ jobs:
     permissions:
       contents: write
       actions: write
+      pull-requests: write
     uses: ./.github/workflows/bump-version.yml
     with:
       part: patch
