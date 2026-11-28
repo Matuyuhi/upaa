@@ -27,7 +27,7 @@ final class ChangesPanel: NSView {
     private var selectedPath: String?
     private var reading = false
     private let rows = NSStackView()
-    private let openButton = NSButton(title: "エディタで開く", target: nil, action: nil)
+    private let openButton = NSButton(title: String(localized: "Open in Editor"), target: nil, action: nil)
 
     /// Shows at most this many lines of a diff, so a huge file does not stall the window.
     private static let maxDiffLines = 400
@@ -108,18 +108,18 @@ final class ChangesPanel: NSView {
         rows.arrangedSubviews.forEach { $0.removeFromSuperview() }
         openButton.isHidden = state?.selected == nil
         guard let state else {
-            add(Chrome.label("git のリポジトリではありません", size: 11, color: .secondaryLabelColor), inset: 6)
+            add(Chrome.label(String(localized: "Not a git repository"), size: 11, color: .secondaryLabelColor), inset: 6)
             return
         }
-        add(Chrome.label((["変更"] + [state.branch].compactMap { $0 }).joined(separator: " · "), size: 11,
+        add(Chrome.label(([String(localized: "Changes")] + [state.branch].compactMap { $0 }).joined(separator: " · "), size: 11,
                          weight: .semibold, color: .secondaryLabelColor), inset: 6)
-        if state.files.isEmpty { add(Chrome.label("変更はありません", size: 12, color: .secondaryLabelColor), inset: 6, top: 6) }
+        if state.files.isEmpty { add(Chrome.label(String(localized: "No changes"), size: 12, color: .secondaryLabelColor), inset: 6, top: 6) }
         for file in state.files {
             let selected = file.path == state.selected
             var views: [NSView] = [Chrome.label(file.path, size: 12, weight: selected ? .medium : .regular, mono: true)]
             views.append(NSView())
             if file.isNew {
-                views.append(Chrome.label("新規", size: 11, color: .systemGreen))
+                views.append(Chrome.label(String(localized: "New"), size: 11, color: .systemGreen))
             }
             if let added = file.added { views.append(Chrome.label("+\(added)", size: 11, mono: true, color: .systemGreen)) }
             if let removed = file.removed { views.append(Chrome.label("−\(removed)", size: 11, mono: true, color: .systemRed)) }

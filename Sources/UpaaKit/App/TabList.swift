@@ -59,13 +59,13 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
 
     override func loadView() {
         // The plus button's action goes up the responder chain to the window's TabbedWindow.
-        let plus = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: "新しいタブ")!,
+        let plus = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: String(localized: "New Tab"))!,
                             target: nil, action: #selector(TabbedWindow.newTab(_:)))
         plus.isBordered = false
         plus.contentTintColor = .secondaryLabelColor
-        plus.toolTip = "新しいタブ (⌘T)"
+        plus.toolTip = String(localized: "New Tab (⌘T)")
         let heading = NSStackView(views: [
-            Chrome.label("タブ", size: 11, weight: .semibold, color: .secondaryLabelColor), NSView(), plus,
+            Chrome.label(String(localized: "Tabs"), size: 11, weight: .semibold, color: .secondaryLabelColor), NSView(), plus,
         ])
         let scroll = NSScrollView()
         scroll.documentView = table
@@ -204,12 +204,12 @@ private final class Row: NSTableCellView {
 
     init() {
         super.init(frame: .zero)
-        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "閉じる")?
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: String(localized: "Close"))?
             .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
         close.isBordered = false
         close.isHidden = true
         close.contentTintColor = .secondaryLabelColor
-        close.toolTip = "タブを閉じる"
+        close.toolTip = String(localized: "Close Tab")
         close.target = self
         close.action = #selector(closeTab)
         close.translatesAutoresizingMaskIntoConstraints = false

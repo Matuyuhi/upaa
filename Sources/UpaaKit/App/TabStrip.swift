@@ -226,12 +226,12 @@ private final class Tab: NSView {
         self.id = id
         super.init(frame: .zero)
         wantsLayer = true
-        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "閉じる")?
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: String(localized: "Close"))?
             .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
         close.isBordered = false
         close.isHidden = true
         close.contentTintColor = .secondaryLabelColor
-        close.toolTip = "タブを閉じる (⌘W)"
+        close.toolTip = String(localized: "Close Tab (⌘W)")
         close.target = self
         close.action = #selector(closeTab)
         addSubview(close)

@@ -40,7 +40,7 @@ enum UpdateCheck {
 
     private static func message(for tag: String) -> String? {
         guard upaa_version_is_newer(tag) else { return nil }
-        return "\(tag) is available (current \(String(cString: upaa_version()))). Run: upaa update"
+        return String(localized: "\(tag) is available (current \(String(cString: upaa_version()))). Run: upaa update")
     }
 
     private struct Release: Decodable {

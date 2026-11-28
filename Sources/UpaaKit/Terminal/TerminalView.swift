@@ -250,10 +250,10 @@ final class TerminalView: MTKView, MTKViewDelegate {
     /// Asks before pasting text that could run a command as soon as it is pasted.
     private func confirmUnsafePaste(_ text: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Paste text that may run commands?"
-        alert.informativeText = "The text contains a line break or a control sequence, so the shell may run it as soon as it is pasted."
-        alert.addButton(withTitle: "Paste")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = String(localized: "Paste text that may run commands?")
+        alert.informativeText = String(localized: "The text contains a line break or a control sequence, so the shell may run it as soon as it is pasted.")
+        alert.addButton(withTitle: String(localized: "Paste"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 

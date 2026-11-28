@@ -91,18 +91,21 @@ jobs:
               print(id)
           }
           SWIFT
-          for name in default config top dark; do
+          for name in default config top ja dark; do
             # top: no config file, with the tab list hidden (Cmd-B), so the tabs are in the toolbar, and a second tab opened there (Cmd-T).
+            # ja: no config file, in Japanese, and its Settings window (Cmd-,) as well. The others are in English.
             # dark: no config file, with the runner switched to dark mode.
             conf="$name"
+            lang=en
             [ "$name" = top ] && conf=default
+            if [ "$name" = ja ]; then conf=default; lang=ja; fi
             if [ "$name" = dark ]; then
               conf=default
               osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
             fi
             # Each launch starts at the config's size, not where the last one left its window.
             defaults delete local.upaa 2>/dev/null || true
-            XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa &
+            XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa -AppleLanguages "($lang)" &
             pid=$!
             sleep 5
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
@@ -117,6 +120,13 @@ jobs:
             [ -n "$id" ] || { echo "upaa opened no window ($name)"; exit 1; }
             screencapture -x -o -l "$id" "$dir/$name.png"
             sips -g pixelWidth -g pixelHeight "$dir/$name.png"; wc -c "$dir/$name.png"
+            if [ "$name" = ja ]; then
+              osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
+                -e 'tell application "System Events" to keystroke "," using command down' || echo "could not press Cmd-,"
+              sleep 2
+              id="$(swift "$dir/window.swift" "$pid")"
+              [ -z "$id" ] || screencapture -x -o -l "$id" "$dir/settings-ja.png"
+            fi
             kill "$pid"
             wait "$pid" || true
           done
@@ -128,7 +138,7 @@ jobs:
           UPAA_NO_UPDATE_CHECK: "1"
         run: |
           dir=build/screenshots
-          XDG_CONFIG_HOME="$PWD/$dir/config" build/upaa.app/Contents/MacOS/upaa &
+          XDG_CONFIG_HOME="$PWD/$dir/config" build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
           pid=$!
           sleep 5
           osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
@@ -200,7 +210,9 @@ jobs:
             "Without a config file: ![default]($url/default.png)" '' \
             "With a config file: ![config]($url/config.png)" '' \
             "Tabs along the top (Cmd-B): ![top]($url/top.png)" '' \
+            "In Japanese: ![ja]($url/ja.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" > ../comment.md
           if [ -f ../shots/settings.png ]; then printf '\n%s\n' "Settings (Cmd-,): ![settings]($url/settings.png)" >> ../comment.md; fi
+          if [ -f ../shots/settings-ja.png ]; then printf '\n%s\n' "Settings in Japanese: ![settings-ja]($url/settings-ja.png)" >> ../comment.md; fi
           if [ -f ../shots/settings-reload.png ]; then printf '\n%s\n' "Settings after font-size = 20 is added to the file: ![settings-reload]($url/settings-reload.png)" >> ../comment.md; fi
           gh pr comment "$PR" --edit-last --create-if-none --body-file ../comment.md
