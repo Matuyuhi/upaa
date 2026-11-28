@@ -37,6 +37,14 @@ final class Config {
         upaa_config_background(handle, dark)
     }
 
+    /// Whether the background the file names is dark, or nil if it names none (the two modes' backgrounds differ).
+    var backgroundIsDark: Bool? {
+        let rgb = background(dark: false)
+        guard rgb == background(dark: true) else { return nil }
+        let luminance = 0.2126 * Double(rgb >> 16 & 0xff) + 0.7152 * Double(rgb >> 8 & 0xff) + 0.0722 * Double(rgb & 0xff)
+        return luminance < 128
+    }
+
     /// Reads the user's file. Without one, every setting is the default.
     static func load() -> Config {
         let environment = ProcessInfo.processInfo.environment

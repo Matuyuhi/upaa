@@ -10,11 +10,12 @@ enum Chrome {
     static let trafficLightsWidth: CGFloat = 78
     static let inactivePaneAlpha: CGFloat = 0.6
 
-    /// Selected tab, selected file, the branch and the main button.
-    static let pill = NSColor(name: nil) { NSColor(white: 1, alpha: $0.isDark ? 0.14 : 0.85) }
-    /// The tint of the glass panels.
+    /// Selected tab, selected file, the branch and the main button. In light mode the glass comes out nearly white,
+    /// so the design's white pill is lost on it; a faint gray stands in.
+    static let pill = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.07) }
+    /// The tint of the glass panels. The design's white at 0.5 makes the light glass solid, so light mode takes less.
     static let glass = NSColor(name: nil) {
-        $0.isDark ? NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.45) : NSColor(white: 1, alpha: 0.5)
+        $0.isDark ? NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.45) : NSColor(white: 1, alpha: 0.2)
     }
     static let addedLine = NSColor.systemGreen.withAlphaComponent(0.18)
     static let removedLine = NSColor.systemRed.withAlphaComponent(0.16)
@@ -66,7 +67,6 @@ final class GlassPanel: NSView {
         if #available(macOS 26.0, *) {
             let view = NSGlassEffectView()
             view.cornerRadius = cornerRadius
-            view.tintColor = Chrome.glass
             view.contentView = content
             glass = view
         } else {
@@ -83,6 +83,21 @@ final class GlassPanel: NSView {
         }
         addSubview(glass)
         glass.pin(to: self)
+    }
+
+    /// The glass keeps the tint it is given as one fixed color, so it gets the tint for this view's light or dark mode
+    /// each time that changes. A tint set before the view is in a window resolved to light mode.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        guard #available(macOS 26.0, *), let glass = subviews.first as? NSGlassEffectView else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            glass.tintColor = NSColor(cgColor: Chrome.glass.cgColor)
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        viewDidChangeEffectiveAppearance()
     }
 
     @available(*, unavailable)
@@ -118,7 +133,7 @@ final class Fill: NSView {
 }
 
 /// A Fill that runs an action when clicked (tab items, file rows, toolbar buttons). On, it has the pill color and a
-/// faint shadow, which keeps the light mode's white pill apart from the light glass.
+/// faint shadow.
 final class Clickable: NSView {
     private let fill: Fill
     var onClick: (() -> Void)?

@@ -89,8 +89,14 @@ jobs:
               print(id)
           }
           SWIFT
-          for name in default config; do
-            XDG_CONFIG_HOME="$PWD/$dir/$name" build/upaa.app/Contents/MacOS/upaa &
+          for name in default config dark; do
+            # dark: no config file, with the runner switched to dark mode.
+            conf="$name"
+            if [ "$name" = dark ]; then
+              conf=default
+              osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+            fi
+            XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa &
             pid=$!
             sleep 5
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
@@ -157,5 +163,6 @@ jobs:
           url="https://raw.githubusercontent.com/$GH_REPO/ci-screenshots/pr-$PR/$SHA"
           printf '%s\n' "Launch screenshots for $SHA" '' \
             "Without a config file: ![default]($url/default.png)" '' \
-            "With a config file: ![config]($url/config.png)" > ../comment.md
+            "With a config file: ![config]($url/config.png)" '' \
+            "In dark mode: ![dark]($url/dark.png)" > ../comment.md
           gh pr comment "$PR" --edit-last --create-if-none --body-file ../comment.md
