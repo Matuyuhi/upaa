@@ -89,6 +89,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         }
         tabStrip.onClose = { [weak self] in self?.closeTab(at: $0) }
         tabStrip.onMove = { [weak self] in self?.moveTab(from: $0, to: $1) }
+        tabList.onClose = tabStrip.onClose
+        tabList.onMove = tabStrip.onMove
         NotificationCenter.default.addObserver(self, selector: #selector(placeTabs(_:)),
                                                name: NSSplitView.didResizeSubviewsNotification, object: columns.splitView)
         tabList.onSelect = { [weak self] index in
@@ -430,7 +432,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         select(index < selected || selected == tabs.count ? selected - 1 : selected)
     }
 
-    /// A tab dragged along the top to another place.
+    /// A tab dragged to another place, in the tab list or along the top.
     private func moveTab(from: Int, to: Int) {
         let current = tabs[selected]
         tabs.insert(tabs.remove(at: from), at: to)

@@ -1,12 +1,16 @@
 import AppKit
 
 /// The window's sidebar: a source list of the tabs, each with its name and the directory of its focused pane, under
-/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own. AppKit's sidebar
+/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own. A row shows a close
+/// button while the pointer is on it, the middle button closes it too, and a row can be dragged to another place, as
+/// the tabs along the top can. AppKit's sidebar
 /// glass shows what is behind the window, not upaa's gradient, so the sidebar lays the window's ground (the gradient
 /// and the card, lined up with the window's) under a pane of the design's glass color.
 final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// A row was picked by the user.
     var onSelect: ((Int) -> Void)?
+    var onClose: ((Int) -> Void)?
+    var onMove: ((_ from: Int, _ to: Int) -> Void)?
     private var items: [(title: String, place: String)] = []
     private let table = NSTableView()
     /// Set while the rows are being replaced, so that the new selection is not taken as the user's.
@@ -37,6 +41,8 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         table.refusesFirstResponder = true
         table.dataSource = self
         table.delegate = self
+        table.registerForDraggedTypes([Self.row])
+        table.draggingDestinationFeedbackStyle = .gap
     }
 
     @available(*, unavailable)
@@ -95,9 +101,12 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
     }
 
     func show(_ items: [(title: String, place: String)], selected: Int) {
-        self.items = items
         reloading = true
-        table.reloadData()
+        // Rows rebuilt under the pointer would lose its hover, so only a change of names or places rebuilds them.
+        if items.map({ [$0.title, $0.place] }) != self.items.map({ [$0.title, $0.place] }) {
+            self.items = items
+            table.reloadData()
+        }
         table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
         reloading = false
     }
@@ -112,20 +121,91 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 1
-        let cell = NSTableCellView()
+        let cell = Row()
         cell.textField = title
+        cell.onClose = { [weak self, weak cell] in
+            guard let self, let cell else { return }
+            let row = self.table.row(for: cell)
+            if row >= 0 { self.onClose?(row) }
+        }
         cell.addSubview(stack)
         stack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -4),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: cell.close.leadingAnchor, constant: -4),
             stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
+    }
+
+    // MARK: Dragging a row
+
+    private static let row = NSPasteboard.PasteboardType("local.upaa.tab")
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        let item = NSPasteboardItem()
+        item.setString(String(row), forType: Self.row)
+        return item
+    }
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+                   proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        guard info.draggingSource as? NSTableView === table else { return [] }
+        tableView.setDropRow(row, dropOperation: .above)
+        return .move
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
+                   dropOperation: NSTableView.DropOperation) -> Bool {
+        guard let from = info.draggingPasteboard.string(forType: Self.row).flatMap(Int.init) else { return false }
+        let to = from < row ? row - 1 : row
+        if to != from { onMove?(from, to) }
+        return true
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !reloading, table.selectedRow >= 0 else { return }
         onSelect?(table.selectedRow)
     }
+}
+
+/// A tab's row, with a close button at its right while the pointer is on it.
+private final class Row: NSTableCellView {
+    let close = NSButton()
+    var onClose: (() -> Void)?
+
+    init() {
+        super.init(frame: .zero)
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "閉じる")?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+        close.isBordered = false
+        close.isHidden = true
+        close.contentTintColor = .secondaryLabelColor
+        close.toolTip = "タブを閉じる"
+        close.target = self
+        close.action = #selector(closeTab)
+        close.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(close)
+        NSLayoutConstraint.activate([
+            close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            close.centerYAnchor.constraint(equalTo: centerYAnchor),
+            close.widthAnchor.constraint(equalToConstant: 16),
+            close.heightAnchor.constraint(equalToConstant: 16),
+        ])
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func mouseEntered(with event: NSEvent) { close.isHidden = false }
+
+    override func mouseExited(with event: NSEvent) { close.isHidden = true }
+
+    override func otherMouseUp(with event: NSEvent) { onClose?() }
+
+    @objc private func closeTab() { onClose?() }
 }
