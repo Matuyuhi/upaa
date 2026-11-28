@@ -30,9 +30,5 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request to upaa, a terminal emulator for macOS written in Swift and Zig.
-            Read CLAUDE.md first and hold the change to its rules, above all the ones on not adding code that is not needed.
-            Look for bugs, broken rules from CLAUDE.md, and code that could be removed or simplified. Skip style nitpicks.
-            Put each finding on its line with an inline comment. Then leave one short summary as a review with
-            `gh pr review --comment --body "<summary>" ${{ github.event.pull_request.number }}`, saying "No findings" when there are none.
-            Write the comments in Japanese. Do not change any file.
+            Review this pull request as .github/review.md says.
+            Post the summary with `gh pr review --comment --body "<summary>" ${{ github.event.pull_request.number }}`.
