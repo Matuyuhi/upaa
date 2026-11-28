@@ -2,8 +2,8 @@ name: upstream-check
 
 # Once a week, open an issue when libghostty-vt or Zig has a release newer than the one upaa is pinned to.
 # Dependabot cannot update these: a new libghostty-vt needs its signature checked and a new SHA-256 and license list,
-# and a new Zig minor version usually needs code changes (CI installs the latest Zig from Homebrew and stops if it
-# is not 0.17.x). An issue with the same title, open or closed, is not opened again, so closing one dismisses that version.
+# and a new Zig minor version usually needs code changes. An issue with the same title, open or closed, is not opened
+# again, so closing one dismisses that version.
 # No action is used, so the job needs no checkout, and its entry in actions.lock lists nothing.
 on:
   schedule:
@@ -48,14 +48,13 @@ jobs:
           To move to it: check the headers at vt-$latest for changed functions, update VERSION and ZIP_SHA256 in scripts/fetch-ghostty-vt.sh after verifying the signature, update THIRD_PARTY_LICENSES.md, and update the vt-$pinned references in CLAUDE.md and .github/review.md."
           fi
 
-          pinned="$(file build.zig.zon | sed -n 's/.*\.minimum_zig_version = "\([0-9]*\.[0-9]*\)\..*/\1/p')"
+          pinned="$(file scripts/fetch-zig.sh | sed -n 's/^VERSION=//p')"
           latest="$(curl -fsSL --proto =https https://ziglang.org/download/index.json \
             | jq -r 'keys[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
-          echo "Zig: pinned $pinned.x, latest $latest"
+          echo "Zig: pinned $pinned, latest $latest"
           [ -n "$pinned" ] && [ -n "$latest" ] || { echo "Cannot read the Zig versions"; exit 1; }
-          case "$latest" in
-            "$pinned".*) ;;
-            *) report "Zig ${latest%.*} が出た" "upaa is written for Zig $pinned.x (minimum_zig_version in build.zig.zon). Zig $latest is out.
+          if [ "$(printf '%s\n%s\n' "$pinned" "$latest" | sort -V | tail -n 1)" != "$pinned" ]; then
+            report "Zig $latest が出た" "CI and releases build with Zig $pinned (VERSION in scripts/fetch-zig.sh). Zig $latest is out.
 
-          CI installs the latest Zig from Homebrew and stops when it is not $pinned.x, so the tests fail once Homebrew moves to it. Moving to it means building with it, fixing what breaks, and updating build.zig.zon, the Zig version checks in test.yml and release.yml, and CLAUDE.md." ;;
-          esac
+          To move to it: update VERSION in scripts/fetch-zig.sh and run the tests. For a new minor version, also expect code changes, and update minimum_zig_version in build.zig.zon and the Zig version in CLAUDE.md."
+          fi
