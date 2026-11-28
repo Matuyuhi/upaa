@@ -245,8 +245,11 @@ private final class Tab: NSView {
         fatalError("init(coder:) is not used")
     }
 
-    /// The name's width with room for the close button on each side, so that the name stays in the middle.
-    var naturalWidth: CGFloat { ceil(label.intrinsicContentSize.width) + 44 }
+    /// The name's width, in the selected tab's weight so that selecting a tab does not move the others, with room for
+    /// the close button on each side, so that the name stays in the middle, and for the label's own inset.
+    var naturalWidth: CGFloat {
+        ceil((title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]).width) + 48
+    }
 
     private func update() {
         label.font = .systemFont(ofSize: 12, weight: isSelected ? .semibold : .regular)
