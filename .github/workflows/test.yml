@@ -93,13 +93,13 @@ jobs:
               print(id)
           }
           SWIFT
-          # A repository with changed lines wider than the right panel, for the changes shot.
+          # A repository with changed lines wider than the right panel, indented, for the changes shot.
           repo="$PWD/$dir/repo"
           git init -q "$repo"
-          printf '%s\n' 'let panel = ChangesPanel()' 'panel.refresh(directory: root)' > "$repo/Sample.swift"
+          printf '%s\n' 'func show() {' '    let panel = ChangesPanel()' '    panel.refresh(directory: root)' '}' > "$repo/Sample.swift"
           git -C "$repo" add . && git -C "$repo" -c user.name=ci -c user.email=ci@localhost commit -qm base
-          printf '%s\n' 'let panel = ChangesPanel(frame: NSRect(x: 0, y: 0, width: Chrome.sidePanelWidth, height: 400))' \
-            '// 長い行はパネルの幅で折り返し、横にスクロールしなくても最後まで読める。' 'panel.refresh(directory: root)' > "$repo/Sample.swift"
+          printf '%s\n' 'func show() {' '    let panel = ChangesPanel(frame: NSRect(x: 0, y: 0, width: Chrome.sidePanelWidth, height: 400))' \
+            '    // 長い行はパネルの幅で折り返し、横にスクロールしなくても最後まで読める。' '    panel.refresh(directory: root)' '}' > "$repo/Sample.swift"
           # Addresses for the links shot: in sentences and Markdown, one too long for a line, a hyperlink (OSC 8) whose label
           # is no address, and one printed twice.
           cat > "$dir/links.sh" <<'SH'
