@@ -188,6 +188,8 @@ jobs:
               -e "tell application \"System Events\" to set position of window 1 of ($app) to {120, 90}" \
               -e "tell application \"System Events\" to set size of window 1 of ($app) to {900, 560}" || echo "could not open or move a window"
             sleep 1
+            date -u +%T
+            [ "$keep" = true ] && sleep 10
             before="$(swift "$dir/frames.swift" "$pid")"
             [ "$keep" = true ] || before="$(echo "$before" | head -n 1)"
             osascript -e "tell application \"System Events\" to set frontmost of ($app) to true" \
@@ -195,7 +197,9 @@ jobs:
             for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
             kill -0 "$pid" 2>/dev/null && { echo "upaa did not quit on Cmd-Q"; kill "$pid"; exit 1; }
             # TEMP diagnostics
-            plutil -p ~/Library/"Saved Application State"/local.upaa.savedState/windows.plist || true
+            date -u +%T
+            ls -laT ~/Library/"Saved Application State"/local.upaa.savedState || true
+            find ~/Library -maxdepth 3 -iname '*upaa*' 2>/dev/null || true
             defaults read local.upaa || true
             build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
             pid=$!
