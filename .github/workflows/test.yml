@@ -81,7 +81,10 @@ jobs:
           UPAA_NO_UPDATE_CHECK: "1"
         run: |
           dir=build/screenshots
-          mkdir -p "$dir/default/upaa" "$dir/config/upaa"
+          mkdir -p "$dir/default/upaa" "$dir/config/upaa" "$dir/zsh"
+          # zsh's own startup files for the shots that start zsh (the runner's login shell is bash): none, so zsh does not
+          # ask to make them.
+          : > "$dir/zsh/.zshrc"
           printf '%s\n' 'font-family = Menlo' 'font-family = Apple Color Emoji' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' \
             'cursor-style = bar' 'window-height = 2' > "$dir/config/upaa/config"
           # Prints the id of the window owned by the given process, to photograph that window alone.
@@ -107,10 +110,12 @@ jobs:
             # changes: no config file, in the repository above, with the right panel shown (Cmd-J).
             # ja: no config file, in Japanese, and its Settings window (Cmd-,) as well. The others are in English.
             # dark: no config file, with the runner switched to dark mode.
-            # close, close-ja: no config file, with a job left in the background and Cmd-W pressed, so the sheet asking
-            # whether to close shows over the window, in English and in Japanese.
+            # close, close-ja: no config file, in zsh with upaa's startup files, with a job left in the background and
+            # Cmd-W pressed, so the sheet asking whether to close the window shows over it, in English and in Japanese.
             conf="$name"
             lang=en
+            shell="$SHELL"
+            case "$name" in close*) shell=/bin/zsh ;; esac
             case "$name" in top | reopen | find | changes | close) conf=default ;; esac
             if [ "$name" = ja ] || [ "$name" = close-ja ]; then conf=default; lang=ja; fi
             if [ "$name" = dark ]; then
@@ -119,7 +124,7 @@ jobs:
             fi
             # Each launch starts at the config's size, not where the last one left its window.
             defaults delete local.upaa 2>/dev/null || true
-            XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa -AppleLanguages "($lang)" &
+            SHELL="$shell" ZDOTDIR="$PWD/$dir/zsh" XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa -AppleLanguages "($lang)" &
             pid=$!
             sleep 5
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
@@ -182,6 +187,41 @@ jobs:
             kill "$pid"
             wait "$pid" || true
           done
+
+      # Cmd-W on the last pane closes the window without asking when it would end nothing: in zsh with only a job it
+      # disowned, as themes start their daemons (powerlevel10k's gitstatusd), and in an idle bash. Fails if the window
+      # stays, and keeps a picture of it.
+      - name: Close without asking
+        env:
+          UPAA_NO_UPDATE_CHECK: "1"
+        run: |
+          dir=build/screenshots
+          failed=
+          for shell in zsh bash; do
+            typed=
+            [ "$shell" = bash ] || typed='sleep 600 &!'
+            defaults delete local.upaa 2>/dev/null || true
+            SHELL="/bin/$shell" ZDOTDIR="$PWD/$dir/zsh" XDG_CONFIG_HOME="$PWD/$dir/default" build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
+            pid=$!
+            sleep 5
+            osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
+              -e "tell application \"System Events\" to keystroke \"$typed\"" \
+              -e 'tell application "System Events" to key code 36' \
+              -e 'delay 1' \
+              -e 'tell application "System Events" to keystroke "w" using command down' || echo "could not press Cmd-W"
+            sleep 2
+            id="$(swift "$dir/window.swift" "$pid")"
+            if [ -n "$id" ]; then
+              echo "the window stayed open after Cmd-W ($shell)"
+              screencapture -x -o -l "$id" "$dir/close-$shell.png"
+              failed=1
+            else
+              echo "the window closed without asking ($shell)"
+            fi
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" || true
+          done
+          [ -z "$failed" ]
 
       # The Settings window (Cmd-,), alone, with the config file above. Pressing keys needs the runner to allow it,
       # so a missing picture does not fail here.
@@ -317,8 +357,13 @@ jobs:
             "In Japanese: ![ja]($url/ja.png)" '' \
             "Changes panel with lines wider than it (Cmd-J): ![changes]($url/changes.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" '' \
-            "Cmd-W with a job in the background: ![close]($url/close.png)" '' \
+            "Cmd-W in zsh with a job in the background: ![close]($url/close.png)" '' \
             "The same in Japanese: ![close-ja]($url/close-ja.png)" > ../comment.md
+          for shell in zsh bash; do
+            if [ -f "../shots/close-$shell.png" ]; then
+              printf '\n%s\n' "Cmd-W in $shell with nothing running left the window open: ![close-$shell]($url/close-$shell.png)" >> ../comment.md
+            fi
+          done
           if [ -f ../shots/settings.png ]; then printf '\n%s\n' "Settings (Cmd-,): ![settings]($url/settings.png)" >> ../comment.md; fi
           if [ -f ../shots/settings-ja.png ]; then printf '\n%s\n' "Settings in Japanese: ![settings-ja]($url/settings-ja.png)" >> ../comment.md; fi
           if [ -f ../shots/settings-reload.png ]; then printf '\n%s\n' "Settings after the file is fixed and font-size = 20 is added: ![settings-reload]($url/settings-reload.png)" >> ../comment.md; fi

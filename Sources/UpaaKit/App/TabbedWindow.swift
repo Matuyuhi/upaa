@@ -106,7 +106,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         tabStrip.onClose = { [weak self] index in
             guard let self else { return }
             let tab = self.tabs[index]
-            self.ask(String(localized: "Close this tab?"), about: tab.panes) { [weak self] in
+            self.ask(self.closing(tab: true), about: tab.panes) { [weak self] in
                 if let self, let index = self.tabs.firstIndex(where: { $0 === tab }) { self.closeTab(at: index) }
             }
         }
@@ -408,8 +408,16 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
 
     /// Closes the focused pane, and the tab with its last pane, asking first while it runs a program.
     @objc func closePane(_ sender: Any?) {
-        let pane = tabs[selected].focus
-        ask(String(localized: "Close this pane?"), about: [pane]) { [weak self] in self?.close(pane) }
+        let tab = tabs[selected]
+        let pane = tab.focus
+        ask(closing(tab: pane === tab.top), about: [pane]) { [weak self] in self?.close(pane) }
+    }
+
+    /// The question before closing a pane, or a whole tab when tab is true, named by what goes: the window when it is
+    /// the last tab.
+    private func closing(tab: Bool) -> String {
+        !tab ? String(localized: "Close this pane?")
+            : tabs.count > 1 ? String(localized: "Close this tab?") : String(localized: "Close this window?")
     }
 
     /// Puts a new pane to the right of the focused one.

@@ -120,8 +120,9 @@ pub fn running(pty: Pty, out: []u8) ?[]const u8 {
 }
 
 /// The names of the programs on the terminal other than the shell (the one in the foreground, and jobs in the
-/// background or stopped), as Terminal counts them before it closes a window. Each name is followed by '\n', and is
-/// empty when it cannot be read; names that do not fit in out are left out. Returns the length written.
+/// background or stopped), as Terminal counts them before it closes a window, leaving out gitstatusd, which themes such
+/// as powerlevel10k keep running beside the shell. Each name is followed by '\n', and is empty when it cannot be read;
+/// names that do not fit in out are left out. Returns the length written.
 pub fn programs(pty: Pty, out: []u8) usize {
     const size = @sizeOf(c.struct_kinfo_proc);
     var shell: c.struct_kinfo_proc = undefined;
@@ -143,6 +144,7 @@ pub fn programs(pty: Pty, out: []u8) usize {
         if (pid == pty.child or proc.kp_proc.p_stat == c.SZOMB) continue;
         var name: [256]u8 = undefined;
         const name_len: usize = @intCast(@max(c.proc_name(pid, &name, name.len), 0));
+        if (std.mem.startsWith(u8, name[0..name_len], "gitstatusd")) continue;
         if (n + name_len + 1 > out.len) break;
         @memcpy(out[n..][0..name_len], name[0..name_len]);
         out[n + name_len] = '\n';
