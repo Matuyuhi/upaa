@@ -215,10 +215,13 @@ private final class FlippedView: NSView {
 }
 
 /// A label that wraps at the width the layout gives it. A wrapping NSTextField sizes its height for
-/// preferredMaxLayoutWidth, so that follows its width, which changes with the panel's.
+/// preferredMaxLayoutWidth, so that follows its width, which changes with the panel's. The value is the width of the
+/// alignment rectangle, which is narrower than the frame, so the frame's width would leave a line that only just
+/// wraps measured as one line and its end cut off.
 private final class WrappingLabel: NSTextField {
     override func layout() {
         super.layout()
-        if preferredMaxLayoutWidth != bounds.width { preferredMaxLayoutWidth = bounds.width }
+        let width = alignmentRect(forFrame: frame).width
+        if preferredMaxLayoutWidth != width { preferredMaxLayoutWidth = width }
     }
 }
