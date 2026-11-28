@@ -257,6 +257,12 @@ private final class Tab: NSView {
         close.isHidden = !hovering
     }
 
+    /// The strip sets the tab's frame directly, which by itself does not lay the tab out again.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+
     override func layout() {
         super.layout()
         back.frame = bounds
