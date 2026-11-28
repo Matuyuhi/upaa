@@ -16,7 +16,7 @@ bool upaa_version_is_newer(const char *candidate);
 typedef struct UpaaConfig UpaaConfig;
 
 typedef struct {
-    // NUL-terminated. Valid while the config lives.
+    // The font, then its fallbacks, one per line (one font-family line each). NUL-terminated. Valid while the config lives.
     const char *font_family;
     // Points.
     double font_size;
@@ -190,9 +190,12 @@ typedef struct {
     uint32_t mascot_next_ms;
 } UpaaFrame;
 
+// font_name is the font, then its fallbacks, one per line; fallbacks that are not installed are skipped.
 // font_size_px is the pixel count after multiplying by the scale factor (2 on Retina). NULL on failure.
 // If mascot is true, the axolotl is drawn faintly behind the text, in cells nothing else uses.
 UpaaRenderer *upaa_renderer_new(const char *font_name, double font_size_px, bool mascot);
+// Changes the font (names and size as for upaa_renderer_new). Returns false, keeping the old font, if it cannot be found.
+bool upaa_renderer_set_font(UpaaRenderer *renderer, const char *font_name, double font_size_px);
 void upaa_renderer_free(UpaaRenderer *renderer);
 UpaaMetrics upaa_renderer_metrics(UpaaRenderer *renderer);
 // Notice drawn above the mascot (e.g. an update is available). ASCII.

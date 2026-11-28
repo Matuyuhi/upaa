@@ -74,6 +74,15 @@ final class TerminalView: MTKView, MTKViewDelegate {
         onResize?()
     }
 
+    /// Changes the font (as for Renderer.setFont) and fits the grid to the new cells. Returns false if it cannot be found.
+    func setFont(name: String, size: Double) -> Bool {
+        guard renderer.setFont(name: name, size: size) else { return false }
+        // The cells' pixel size changed even if the grid did not.
+        gridSize = (0, 0)
+        if drawableSize.width > 0 { mtkView(self, drawableSizeWillChange: drawableSize) }
+        return true
+    }
+
     /// Draws once the current event has been handled. Requests made while handling one event share a frame.
     private func redraw() {
         guard !redrawQueued else { return }
