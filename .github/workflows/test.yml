@@ -174,7 +174,8 @@ jobs:
               print(["X", "Y", "Width", "Height"].map { String(Int(bounds[$0] ?? -1)) }.joined(separator: " "))
           }
           SWIFT
-          for keep in true false; do
+          failed=
+          for keep in false true; do
             defaults delete local.upaa 2>/dev/null || true
             rm -rf ~/Library/"Saved Application State"/local.upaa.savedState
             defaults write local.upaa NSQuitAlwaysKeepsWindows -bool "$keep"
@@ -193,6 +194,9 @@ jobs:
               -e 'tell application "System Events" to keystroke "q" using command down'
             for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
             kill -0 "$pid" 2>/dev/null && { echo "upaa did not quit on Cmd-Q"; kill "$pid"; exit 1; }
+            # TEMP diagnostics
+            plutil -p ~/Library/"Saved Application State"/local.upaa.savedState/windows.plist || true
+            defaults read local.upaa || true
             build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
             pid=$!
             sleep 5
@@ -200,9 +204,10 @@ jobs:
             kill "$pid"
             wait "$pid" || true
             printf 'keep windows %s\nbefore the quit:\n%s\nafter the launch:\n%s\n' "$keep" "$before" "$after"
-            [ "$(echo "$before" | sort)" = "$(echo "$after" | sort)" ] || { echo "the windows did not come back as they were"; exit 1; }
+            [ "$(echo "$before" | sort)" = "$(echo "$after" | sort)" ] || { echo "the windows did not come back as they were"; failed=1; }
           done
           defaults delete local.upaa 2>/dev/null || true
+          [ -z "$failed" ]
 
       - name: Keep the launch screenshots
         if: always()
