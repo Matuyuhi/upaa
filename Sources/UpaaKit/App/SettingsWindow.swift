@@ -7,11 +7,14 @@ final class SettingsWindow: NSWindowController {
     private let sizeStepper = NSStepper()
     /// One row per fallback, each a menu of every family and a button that removes the row.
     private let fallbacks = NSStackView()
+    /// What in the config could not be used, under the note. Its row is hidden when there is none.
+    private let problems = NSTextField(wrappingLabelWithString: "")
+    private var grid: NSGridView!
     private let families = NSFontManager.shared.availableFontFamilies
     private let onChange: (_ families: [String], _ size: Double) -> Void
 
     /// families is the font, then its fallbacks. onChange gets them back, with the size in points, after each change.
-    init(families: [String], size: Double, onChange: @escaping (_ families: [String], _ size: Double) -> Void) {
+    init(families: [String], size: Double, problems: [String], onChange: @escaping (_ families: [String], _ size: Double) -> Void) {
         self.onChange = onChange
         let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: true)
         window.title = String(localized: "Settings")
@@ -66,13 +69,17 @@ final class SettingsWindow: NSWindowController {
         note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         note.textColor = .secondaryLabelColor
         note.preferredMaxLayoutWidth = 290
+        self.problems.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        self.problems.textColor = Chrome.warning
+        self.problems.preferredMaxLayoutWidth = 290
         let sizeRow = NSStackView(views: [sizeField, sizeStepper, NSTextField(labelWithString: "pt")])
         sizeRow.spacing = 4
-        let grid = NSGridView(views: [
+        grid = NSGridView(views: [
             [NSTextField(labelWithString: String(localized: "Font:")), fontButton],
             [NSTextField(labelWithString: String(localized: "Size:")), sizeRow],
             [NSTextField(labelWithString: String(localized: "Fallbacks:")), fallbackColumn],
             [NSGridCell.emptyContentView, note],
+            [NSGridCell.emptyContentView, self.problems],
         ])
         grid.rowAlignment = .firstBaseline
         grid.column(at: 0).xPlacement = .trailing
@@ -89,12 +96,13 @@ final class SettingsWindow: NSWindowController {
             grid.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
             fontButton.widthAnchor.constraint(equalToConstant: 260),
             note.widthAnchor.constraint(equalToConstant: 290),
+            self.problems.widthAnchor.constraint(equalToConstant: 290),
             sizeField.widthAnchor.constraint(equalToConstant: 48),
         ])
         window.contentView = content
         // Not the size field, which would open with its text selected.
         window.initialFirstResponder = fontButton
-        show(families: families, size: size)
+        show(families: families, size: size, problems: problems)
         window.center()
     }
 
@@ -103,8 +111,10 @@ final class SettingsWindow: NSWindowController {
         fatalError("init(coder:) is not used")
     }
 
-    /// Shows the font, its fallbacks and the size, as when the config file was changed by hand.
-    func show(families: [String], size: Double) {
+    /// Shows the font, its fallbacks, the size and what could not be used, as when the config file was changed by hand.
+    func show(families: [String], size: Double, problems: [String]) {
+        self.problems.stringValue = problems.joined(separator: "\n")
+        grid.row(at: 4).isHidden = problems.isEmpty
         Self.select(families.first, in: fontButton)
         sizeField.doubleValue = size
         sizeStepper.doubleValue = size
