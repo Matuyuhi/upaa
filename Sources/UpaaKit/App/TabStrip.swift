@@ -257,14 +257,9 @@ private final class Tab: NSView {
         close.isHidden = !hovering
     }
 
-    /// The strip sets the tab's frame directly, which by itself does not lay the tab out again.
+    /// The strip sets the tab's frame as it animates, and the parts follow it at once, not on a later layout pass.
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        needsLayout = true
-    }
-
-    override func layout() {
-        super.layout()
         back.frame = bounds
         close.frame = NSRect(x: 6, y: (bounds.height - 16) / 2, width: 16, height: 16)
         let height = label.intrinsicContentSize.height
