@@ -150,6 +150,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The system's saved windows (restoreWindow) learn of a move or a resize only when told; otherwise a window comes
     /// back where it was made.
     func windowDidMove(_ notification: Notification) {
+        NSLog("upaa diag moved \(NSStringFromRect(window.frame))")
         window.invalidateRestorableState()
     }
 

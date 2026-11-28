@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The windows open at the last quit are back by now, where they were (restoreWindow), unless the system closes
         // windows on quit. Otherwise one window opens where the last one used was; the config's size is for the first
         // launch and for new windows.
+        NSLog("upaa diag launch windows=\(windows.count) frames=\(NSApp.windows.map { NSStringFromRect($0.frame) })")
         if windows.isEmpty {
             guard let window = makeWindow() else {
                 NSLog("upaa: failed to start the terminal")
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NSLog("upaa diag terminate frames=\(NSApp.windows.map { NSStringFromRect($0.frame) })")
         if let window = NSApp.orderedWindows.first(where: { $0.delegate is TabbedWindow }) { TabbedWindow.saveFrame(of: window) }
     }
 
@@ -231,6 +233,7 @@ extension AppDelegate: NSWindowRestoration {
     /// puts where that window was, at its size, on its screen and full screen if it was.
     static func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder,
                               completionHandler: @escaping (NSWindow?, Error?) -> Void) {
+        NSLog("upaa diag restore \(identifier.rawValue)")
         completionHandler((NSApp.delegate as? AppDelegate)?.makeWindow(), nil)
     }
 }

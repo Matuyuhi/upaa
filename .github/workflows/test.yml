@@ -179,6 +179,7 @@ jobs:
             defaults delete local.upaa 2>/dev/null || true
             rm -rf ~/Library/"Saved Application State"/local.upaa.savedState
             defaults write local.upaa NSQuitAlwaysKeepsWindows -bool "$keep"
+            touch "$dir/marker"
             build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
             pid=$!
             sleep 5
@@ -199,7 +200,8 @@ jobs:
             # TEMP diagnostics
             date -u +%T
             ls -laT ~/Library/"Saved Application State"/local.upaa.savedState || true
-            find ~/Library -maxdepth 3 -iname '*upaa*' 2>/dev/null || true
+            find ~/Library ~/.local "$TMPDIR" -newer "$dir/marker" -type f 2>/dev/null | grep -v -e /Caches/ -e /Logs/ | head -40 || true
+            log show --last 2m --predicate 'process == "upaa"' --style compact 2>/dev/null | grep -i -e restor -e "upaa diag" | tail -40 || true
             defaults read local.upaa || true
             build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
             pid=$!
