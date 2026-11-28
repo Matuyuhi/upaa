@@ -1,17 +1,17 @@
 import AppKit
 
-/// The window's sidebar: a source list of the tabs, each with its name and the directory of its focused pane, under
-/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own. A row shows a close
-/// button while the pointer is on it, the middle button closes it too, and a row can be dragged to another place, as
-/// the tabs along the top can. AppKit's sidebar
-/// glass shows what is behind the window, not upaa's gradient, so the sidebar lays the window's ground (the gradient
-/// and the card, lined up with the window's) under a pane of the design's glass color.
+/// The window's sidebar: a source list of the tabs, each with its name, a dot while it has output not seen yet, and
+/// the directory and program of its focused pane under them (design M5), under a heading with the button for a new
+/// tab. The list's look, selection and hover are AppKit's own. A row shows a close button while the pointer is on it,
+/// the middle button closes it too, and a row can be dragged to another place, as the tabs along the top can. AppKit's
+/// sidebar glass shows what is behind the window, not upaa's gradient, so the sidebar lays the window's ground (the
+/// gradient and the card, lined up with the window's) under a pane of the design's glass color.
 final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// A row was picked by the user.
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
     var onMove: ((_ from: Int, _ to: Int) -> Void)?
-    private var items: [(title: String, place: String)] = []
+    private var items: [Item] = []
     private let table = Table()
     /// Set while the rows are being replaced, so that the new selection is not taken as the user's.
     private var reloading = false
@@ -107,10 +107,14 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         ])
     }
 
-    func show(_ items: [(title: String, place: String)], selected: Int) {
+    typealias Item = (title: String, detail: String, unseen: Bool)
+
+    /// While a row is being dragged, the rows stay as the drag left them; the owner shows them again once it lets go.
+    func show(_ items: [Item], selected: Int) {
+        guard !table.dragging else { return }
         reloading = true
-        // Rows rebuilt under the pointer would lose its hover, so only a change of names or places rebuilds them.
-        if items.map({ [$0.title, $0.place] }) != self.items.map({ [$0.title, $0.place] }) {
+        // Rows rebuilt under the pointer would lose its hover, so only a change in a row rebuilds them.
+        if !items.elementsEqual(self.items, by: { $0 == $1 }) {
             self.items = items
             table.reloadData()
         }
@@ -123,8 +127,18 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let title = Chrome.label(items[row].title, size: 13)
-        let stack = NSStackView(views: [title, Chrome.label(items[row].place, size: 11, mono: true, color: .secondaryLabelColor)])
+        let item = items[row]
+        let title = Chrome.label(item.title, size: 13)
+        let line = NSStackView(views: [title])
+        line.spacing = 6
+        if item.unseen {
+            let dot = NSImageView(image: NSImage(systemSymbolName: "circle.fill",
+                                                 accessibilityDescription: String(localized: "New output"))!)
+            dot.symbolConfiguration = .init(pointSize: 6, weight: .regular)
+            dot.contentTintColor = .controlAccentColor
+            line.addArrangedSubview(dot)
+        }
+        let stack = NSStackView(views: [line, Chrome.label(item.detail, size: 11, mono: true, color: .secondaryLabelColor)])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 1
@@ -161,6 +175,7 @@ private final class Table: NSTableView {
     /// The pointer let go of a row that was dragged from one place to another.
     var onMoved: ((_ from: Int, _ to: Int) -> Void)?
     private var held: (from: Int, row: Int, start: CGFloat, moved: Bool)?
+    var dragging: Bool { held?.moved == true }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)

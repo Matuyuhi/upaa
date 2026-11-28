@@ -1,9 +1,9 @@
 import AppKit
 
-/// The tabs along the top, in the toolbar while the tab list is hidden (design A3). A tab shows its name, and a close
-/// button while the pointer is on it; dragging a tab moves it among the others, and the middle button closes it. A tab
-/// that opens widens from nothing and one that closes narrows to nothing, and when they do not all fit, they all
-/// narrow, as tabs do in Safari.
+/// The tabs along the top, in the toolbar while the tab list is hidden (design A3). A tab shows its name, a dot before
+/// it while the tab has output not seen yet, and a close button while the pointer is on it; dragging a tab moves it
+/// among the others, and the middle button closes it. A tab that opens widens from nothing and one that closes
+/// narrows to nothing, and when they do not all fit, they all narrow, as tabs do in Safari.
 final class TabStrip: NSView {
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
@@ -35,13 +35,16 @@ final class TabStrip: NSView {
         fatalError("init(coder:) is not used")
     }
 
-    /// The tabs by their owner's identity, so that one that opens, closes or moves is told from the others.
-    func show(_ items: [(id: ObjectIdentifier, title: String)], selected: Int) {
+    /// The tabs by their owner's identity, so that one that opens, closes or moves is told from the others. While a
+    /// tab is being dragged, the tabs stay as the drag left them; the owner shows them again once it lets go.
+    func show(_ items: [(id: ObjectIdentifier, title: String, unseen: Bool)], selected: Int) {
+        guard held?.moved != true else { return }
         let ids = items.map(\.id)
         for tab in tabs where !ids.contains(tab.id) { tab.target = 0 }
         var order: [Tab] = items.enumerated().map { index, item in
             let tab = tabs.first { $0.id == item.id && $0.target == 1 } ?? newTab(item.id)
             tab.title = item.title
+            tab.unseen = item.unseen
             tab.isSelected = index == selected
             return tab
         }
@@ -199,7 +202,8 @@ final class TabStrip: NSView {
     }
 }
 
-/// One tab along the top: its name, and a close button at its left while the pointer is on it. The tab draws its name
+/// One tab along the top: its name, a dot before it for output not seen yet, and a close button at its left while the
+/// pointer is on it, in place of the dot. The tab draws its name
 /// and its background itself, measured and drawn with the same font, so that a name that fits is never cut short.
 private final class Tab: NSView {
     let id: ObjectIdentifier
@@ -211,6 +215,9 @@ private final class Tab: NSView {
         didSet { needsDisplay = true }
     }
     var isSelected = false {
+        didSet { needsDisplay = true }
+    }
+    var unseen = false {
         didSet { needsDisplay = true }
     }
 
@@ -263,9 +270,16 @@ private final class Tab: NSView {
         back.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
         let name = name(selected: isSelected)
-        let height = ceil(name.size().height)
+        let size = name.size()
+        let height = ceil(size.height)
         name.draw(with: NSRect(x: 22, y: (bounds.height - height) / 2, width: max(0, bounds.width - 44), height: height),
                   options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        // The dot sits 6 before the centered name, or at the edge of the name's room when the name fills it.
+        if unseen, !hovering {
+            let x = max(22, (bounds.width - ceil(size.width)) / 2) - 12
+            NSColor.controlAccentColor.setFill()
+            NSBezierPath(ovalIn: NSRect(x: x, y: (bounds.height - 6) / 2, width: 6, height: 6)).fill()
+        }
     }
 
     /// The strip sets the tab's frame as it animates; the close button and the drawing follow it at once.
