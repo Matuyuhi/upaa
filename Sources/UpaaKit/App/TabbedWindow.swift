@@ -188,13 +188,13 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         return true
     }
 
-    /// The programs running in the panes, other than their shells.
-    var running: [String] { tabs.flatMap(\.panes).compactMap(\.session.running) }
+    /// The programs running in the panes, other than their shells, in the foreground or not.
+    var running: [String] { tabs.flatMap(\.panes).flatMap(\.session.programs) }
 
     /// Does then at once when no pane among panes runs a program other than its shell; otherwise asks first, in a
     /// sheet, as Terminal does, since closing ends those programs.
     private func ask(_ question: String, about panes: [TerminalView], then: @escaping () -> Void) {
-        let running = panes.compactMap(\.session.running)
+        let running = panes.flatMap(\.session.programs)
         guard !running.isEmpty else { return then() }
         Self.alert(question, button: String(localized: "Close"), running: running).beginSheetModal(for: window) {
             if $0 == .alertFirstButtonReturn { then() }

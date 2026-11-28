@@ -119,6 +119,38 @@ pub fn running(pty: Pty, out: []u8) ?[]const u8 {
     return out[0..@intCast(@max(n, 0))];
 }
 
+/// The names of the programs on the terminal other than the shell (the one in the foreground, and jobs in the
+/// background or stopped), as Terminal counts them before it closes a window. Each name is followed by '\n', and is
+/// empty when it cannot be read; names that do not fit in out are left out. Returns the length written.
+pub fn programs(pty: Pty, out: []u8) usize {
+    const size = @sizeOf(c.struct_kinfo_proc);
+    var shell: c.struct_kinfo_proc = undefined;
+    var len: usize = size;
+    var mib = [4]c_int{ c.CTL_KERN, c.KERN_PROC, c.KERN_PROC_PID, pty.child };
+    if (c.sysctl(&mib, mib.len, &shell, &len, null, 0) != 0 or len != size) return 0;
+    mib[2] = c.KERN_PROC_TTY;
+    mib[3] = shell.kp_eproc.e_tdev;
+    if (c.sysctl(&mib, mib.len, null, &len, null, 0) != 0) return 0;
+    // Room for a few more, since programs may start between the two calls.
+    const procs = std.heap.c_allocator.alloc(c.struct_kinfo_proc, len / size + 8) catch return 0;
+    defer std.heap.c_allocator.free(procs);
+    len = procs.len * size;
+    if (c.sysctl(&mib, mib.len, procs.ptr, &len, null, 0) != 0) return 0;
+
+    var n: usize = 0;
+    for (procs[0 .. len / size]) |proc| {
+        const pid = proc.kp_proc.p_pid;
+        if (pid == pty.child or proc.kp_proc.p_stat == c.SZOMB) continue;
+        var name: [256]u8 = undefined;
+        const name_len: usize = @intCast(@max(c.proc_name(pid, &name, name.len), 0));
+        if (n + name_len + 1 > out.len) break;
+        @memcpy(out[n..][0..name_len], name[0..name_len]);
+        out[n + name_len] = '\n';
+        n += name_len + 1;
+    }
+    return n;
+}
+
 /// Terminates the child process, reaps it, and closes the fd.
 pub fn deinit(pty: Pty) void {
     _ = c.kill(pty.child, c.SIGHUP);

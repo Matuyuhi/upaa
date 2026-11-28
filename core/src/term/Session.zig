@@ -389,6 +389,11 @@ pub fn running(self: *Session, out: []u8) isize {
     return @intCast((self.pty.running(out) orelse return -1).len);
 }
 
+/// The programs on the terminal other than the shell, as Pty.programs.
+pub fn programs(self: *Session, out: []u8) usize {
+    return self.pty.programs(out);
+}
+
 /// The title the program set (UTF-8), copied into out. Returns the full length; 0 if none was set.
 pub fn title(self: *Session, out: []u8) usize {
     self.lock();
@@ -760,6 +765,21 @@ test "a program the shell runs in the foreground is told from the shell" {
         _ = c.usleep(100 * 1000);
     }
     try std.testing.expectEqualStrings("sleep", name[0..@intCast(@max(n, 0))]);
+}
+
+test "a job the shell runs in the background is counted among its programs" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "/bin/sh" });
+    defer self.destroy();
+    self.write("sleep 5 &\n");
+    var names: [256]u8 = undefined;
+    var n: usize = 0;
+    var tries: usize = 0;
+    while (tries < 50) : (tries += 1) {
+        n = self.programs(&names);
+        if (std.mem.indexOf(u8, names[0..n], "sleep\n") != null) break;
+        _ = c.usleep(100 * 1000);
+    }
+    try std.testing.expect(std.mem.indexOf(u8, names[0..n], "sleep\n") != null);
 }
 
 fn typeText(self: *Session, text: []const u8) void {
