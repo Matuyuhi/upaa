@@ -34,8 +34,9 @@ final class Renderer {
     private let atlasTexture: MTLTexture
     private var atlasGeneration: UInt64 = 0
     private var cellBuffer: MTLBuffer?
-    /// Seconds after the last draw until the mascot changes, or nil if nothing waits on it.
-    private(set) var mascotDelay: TimeInterval?
+    /// Seconds after the last draw until it should be drawn again (the mascot changes, or the find bar's search has
+    /// more of the scrollback to go through), or nil if nothing waits on it.
+    private(set) var redrawDelay: TimeInterval?
 
     /// How much of the default background color covers what is behind the view (0 to 1).
     let backgroundOpacity: Double
@@ -147,7 +148,7 @@ final class Renderer {
         let preeditBytes = Array(preedit.utf8)
         let frame = upaa_renderer_frame(handle, session.handle, preeditBytes, preeditBytes.count, cells, capacity)
         uploadAtlasIfNeeded(generation: frame.atlas_generation)
-        mascotDelay = frame.mascot_next_ms > 0 ? Double(frame.mascot_next_ms) / 1000 : nil
+        redrawDelay = frame.searching ? 1.0 / 60 : frame.mascot_next_ms > 0 ? Double(frame.mascot_next_ms) / 1000 : nil
 
         // Colors are premultiplied by alpha, as Core Animation composites them.
         let bg = frame.background

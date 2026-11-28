@@ -103,6 +103,12 @@ public enum UpaaApp {
         editItem.submenu?.addItem(withTitle: String(localized: "Copy"), action: #selector(TerminalView.copy(_:)), keyEquivalent: "c")
         editItem.submenu?.addItem(withTitle: String(localized: "Paste"), action: #selector(TerminalView.paste(_:)), keyEquivalent: "v")
         editItem.submenu?.addItem(withTitle: String(localized: "Select All"), action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu?.addItem(.separator())
+        let findMenu = NSMenu(title: String(localized: "Find"))
+        findMenu.addItem(withTitle: String(localized: "Find…"), action: #selector(TerminalView.showFindBar(_:)), keyEquivalent: "f")
+        findMenu.addItem(withTitle: String(localized: "Find Next"), action: #selector(TerminalView.findNextMatch(_:)), keyEquivalent: "g")
+        findMenu.addItem(withTitle: String(localized: "Find Previous"), action: #selector(TerminalView.findPreviousMatch(_:)), keyEquivalent: "G")
+        editItem.submenu?.addItem(withTitle: String(localized: "Find"), action: nil, keyEquivalent: "").submenu = findMenu
         mainMenu.addItem(editItem)
 
         let viewItem = NSMenuItem()

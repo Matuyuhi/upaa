@@ -58,8 +58,11 @@ pub fn destroy(self: *Renderer) void {
 
 /// Writes the session's current screen to out. preedit is the IME composing string (empty if none).
 pub fn buildFrame(self: *Renderer, session: *Session, preedit: []const u8, out: []Cell) Frame.Info {
-    if (!session.updateRenderState(self.state)) return .{};
-    var info = self.frame.build(self.state, self.face, &self.atlas, preedit, out);
+    // Matches past this many in view are not marked.
+    var matches: [512]Session.Match = undefined;
+    const update = session.updateRenderState(self.state, &matches) orelse return .{};
+    var info = self.frame.build(self.state, self.face, &self.atlas, preedit, matches[0..update.matches], out);
+    info.searching = update.searching;
     _ = vt.ghostty_render_state_clean(self.state);
     self.cols = info.cols;
     self.rows = info.rows;

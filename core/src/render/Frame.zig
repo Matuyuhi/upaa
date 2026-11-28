@@ -6,6 +6,7 @@ const vt = @import("ghostty");
 const Atlas = @import("../font/Atlas.zig");
 const Face = @import("../font/Face.zig");
 const Cell = @import("Cell.zig").Cell;
+const Session = @import("../term/Session.zig");
 
 row_iter: vt.GhosttyRenderStateRowIterator,
 row_cells: vt.GhosttyRenderStateRowCells,
@@ -21,6 +22,8 @@ pub const Info = extern struct {
     cursor_col: u16 = 0,
     cursor_row: u16 = 0,
     cursor_visible: bool = false,
+    /// The find bar's search has more of the scrollback to go through: draw again soon.
+    searching: bool = false,
     /// Milliseconds until the mascot changes, when the screen should be drawn again. 0 if nothing is waiting.
     mascot_next_ms: u32 = 0,
 };
@@ -42,7 +45,9 @@ pub fn deinit(frame: Frame) void {
 /// state must already be updated (after ghostty_render_state_update, or after begin/end_update).
 /// Writes all cells of the screen to out. If out is too small, writes as many as fit.
 /// preedit is the IME composing string (UTF-8). If not empty, it is overlaid with an underline starting at the cursor position.
-pub fn build(frame: *Frame, state: vt.GhosttyRenderState, face: Face, atlas: *Atlas, preedit: []const u8, out: []Cell) Info {
+/// matches are the find bar's matches in view (Session.updateRenderState), marked in yellow.
+pub fn build(frame: *Frame, state: vt.GhosttyRenderState, face: Face, atlas: *Atlas, preedit: []const u8,
+    matches: []const Session.Match, out: []Cell) Info {
     var info: Info = .{};
     _ = vt.ghostty_render_state_get(state, vt.GHOSTTY_RENDER_STATE_DATA_COLS, &info.cols);
     _ = vt.ghostty_render_state_get(state, vt.GHOSTTY_RENDER_STATE_DATA_ROWS, &info.rows);
@@ -97,7 +102,9 @@ pub fn build(frame: *Frame, state: vt.GhosttyRenderState, face: Face, atlas: *At
     }
 
     // A cell's row and column are determined only when all cells were written.
-    if (preedit.len > 0 and cursor_shown and n == @as(usize, info.cols) * info.rows) {
+    const full = n == @as(usize, info.cols) * info.rows;
+    if (full) markMatches(out[0..n], info.cols, matches, default_bg);
+    if (preedit.len > 0 and cursor_shown and full) {
         const line = out[@as(usize, cursor.viewport_y) * info.cols ..][0..info.cols];
         overlayPreedit(line, cursor.viewport_x, preedit, face, atlas, default_fg, default_bg);
     }
@@ -105,6 +112,27 @@ pub fn build(frame: *Frame, state: vt.GhosttyRenderState, face: Face, atlas: *At
     info.cell_count = @intCast(n);
     info.atlas_generation = atlas.generation;
     return info;
+}
+
+/// Design M5: the selected match in solid yellow with black text, the others tinted yellow, less over a dark background.
+/// The cells are in rows, so a match that wraps onto the next row is one run of cells.
+fn markMatches(cells: []Cell, cols: u16, matches: []const Session.Match, background: [4]u8) void {
+    const yellow: [4]u8 = .{ 0xff, 0xd6, 0x0a, 0xff };
+    const dark = @as(u32, background[0]) + background[1] + background[2] < 3 * 128;
+    const percent: u16 = if (dark) 35 else 45;
+    for (matches) |match| {
+        const first = @as(usize, match.start.y) * cols + match.start.x;
+        const last = @as(usize, match.end.y) * cols + match.end.x;
+        if (first > last or last >= cells.len) continue;
+        for (cells[first .. last + 1]) |*cell| {
+            if (match.selected) {
+                cell.bg = yellow;
+                cell.fg = .{ 0, 0, 0, 0xff };
+            } else for (0..3) |i| {
+                cell.bg[i] = @intCast((@as(u16, cell.bg[i]) * (100 - percent) + @as(u16, yellow[i]) * percent) / 100);
+            }
+        }
+    }
 }
 
 /// Overlays the composing string on the line from column start, with an underline. Clipped at the end of the line (no wrapping).
@@ -198,7 +226,7 @@ test "cells carry glyphs, colors and the cursor" {
     defer frame.deinit();
 
     var cells: [64]Cell = undefined;
-    const info = frame.build(state, face, &atlas, "", &cells);
+    const info = frame.build(state, face, &atlas, "", &.{}, &cells);
     try std.testing.expectEqual(@as(u32, 30), info.cell_count);
     try std.testing.expectEqual(@as(u16, 10), info.cols);
 
@@ -231,7 +259,7 @@ test "cells carry glyphs, colors and the cursor" {
     try std.testing.expectEqual(@as(u16, 1), info.cursor_row);
 
     // The composing string overlays from the cursor position (row 2, column 2) with an underline, and the cursor moves after it.
-    const composing = frame.build(state, face, &atlas, "かa", &cells);
+    const composing = frame.build(state, face, &atlas, "かa", &.{}, &cells);
     try std.testing.expectEqual(@as(u32, 30), composing.cell_count);
     try std.testing.expect(cells[11].glyph.width > face.metrics.cell_width);
     try std.testing.expectEqual(Cell.Flags.underline, cells[11].flags);
@@ -243,13 +271,26 @@ test "cells carry glyphs, colors and the cursor" {
     // The original cursor position is overwritten by the composing string (no block remains).
     try std.testing.expectEqual(a.bg, cells[11].bg);
 
+    // The find bar's matches: tinted, and the selected one yellow with black text, also where it wraps onto the next row.
+    const matches = [_]Session.Match{
+        .{ .start = .{ .x = 0, .y = 0 }, .end = .{ .x = 1, .y = 0 } },
+        .{ .start = .{ .x = 9, .y = 0 }, .end = .{ .x = 0, .y = 1 }, .selected = true },
+    };
+    _ = frame.build(state, face, &atlas, "", &matches, &cells);
+    try std.testing.expect(!std.mem.eql(u8, &a.bg, &cells[0].bg));
+    try std.testing.expectEqual(a.fg, cells[0].fg);
+    try std.testing.expectEqual(cells[0].bg, cells[1].bg);
+    try std.testing.expectEqual(a.bg, cells[6].bg);
+    try std.testing.expectEqual([4]u8{ 0xff, 0xd6, 0x0a, 0xff }, cells[9].bg);
+    try std.testing.expectEqual([4]u8{ 0, 0, 0, 0xff }, cells[10].fg);
+
     // Selected cells have foreground and background swapped.
     var selection = std.mem.zeroes(vt.GhosttySelection);
     _ = vt.ghostty_terminal_grid_ref(terminal, .{ .tag = vt.GHOSTTY_POINT_TAG_ACTIVE, .value = .{ .coordinate = .{ .x = 0, .y = 0 } } }, &selection.start);
     _ = vt.ghostty_terminal_grid_ref(terminal, .{ .tag = vt.GHOSTTY_POINT_TAG_ACTIVE, .value = .{ .coordinate = .{ .x = 1, .y = 0 } } }, &selection.end);
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_SELECTION, &selection);
     try std.testing.expectEqual(vt.GHOSTTY_SUCCESS, vt.ghostty_render_state_update(state, terminal));
-    _ = frame.build(state, face, &atlas, "", &cells);
+    _ = frame.build(state, face, &atlas, "", &.{}, &cells);
     try std.testing.expectEqual(a.fg, cells[0].bg);
     try std.testing.expectEqual(a.bg, cells[0].fg);
     try std.testing.expectEqual(a.bg, cells[2].fg);

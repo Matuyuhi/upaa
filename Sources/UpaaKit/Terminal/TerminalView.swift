@@ -15,12 +15,16 @@ final class TerminalView: MTKView, MTKViewDelegate {
     /// Runs while a selection drag is past the top or bottom edge, scrolling one row per tick.
     private var autoscrollTimer: Timer?
     private var lastDrag: NSEvent?
-    /// Fires when the mascot's picture changes, since it moves without the screen changing.
-    private var mascotTimer: Timer?
+    /// Fires when the mascot's picture changes, or the search has more scrollback to go through, since neither waits
+    /// on the screen changing.
+    private var redrawTimer: Timer?
     /// A redraw is waiting to run after the current event.
     private var redrawQueued = false
     /// A grid resize is waiting to follow the drawable's size.
     private var resizeQueued = false
+    /// The find bar (Cmd-F), floating over the bottom of the pane. Made the first time it opens.
+    private var findBar: FindBar?
+    private var finding = false
     /// This view took the keyboard (a click on it, or the window choosing it).
     var onFocus: (() -> Void)?
     /// The grid changed size.
@@ -133,9 +137,10 @@ final class TerminalView: MTKView, MTKViewDelegate {
             viewport: (Int(drawableSize.width), Int(drawableSize.height)))
         commandBuffer.present(drawable)
         commandBuffer.commit()
+        if finding { findBar?.show(count: session.findCount) }
 
-        mascotTimer?.invalidate()
-        mascotTimer = renderer.mascotDelay.map { delay in
+        redrawTimer?.invalidate()
+        redrawTimer = renderer.redrawDelay.map { delay in
             Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in self?.redraw() }
         }
     }
@@ -273,6 +278,76 @@ final class TerminalView: MTKView, MTKViewDelegate {
     override func selectAll(_ sender: Any?) {
         session.selectAll()
         redraw()
+    }
+
+    // MARK: Find
+
+    /// Cmd-F. Opens the find bar with the text it had, or takes the keyboard back to it, the text selected so that
+    /// typing replaces it.
+    @objc func showFindBar(_ sender: Any?) {
+        let bar = findBar ?? makeFindBar()
+        if !finding {
+            finding = true
+            session.find(bar.field.stringValue)
+            bar.isHidden = false
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Chrome.animation
+                bar.animator().alphaValue = 1
+            }
+            redraw()
+        }
+        window?.makeFirstResponder(bar.field)
+        bar.field.selectText(nil)
+    }
+
+    /// Cmd-G, and Return in the find bar: the next older match. Opens the find bar while it is closed.
+    @objc func findNextMatch(_ sender: Any?) {
+        moveMatch(back: false)
+    }
+
+    /// Shift-Cmd-G, and Shift-Return in the find bar: the next newer match.
+    @objc func findPreviousMatch(_ sender: Any?) {
+        moveMatch(back: true)
+    }
+
+    private func moveMatch(back: Bool) {
+        guard finding else { return showFindBar(nil) }
+        session.findNext(back: back)
+        redraw()
+    }
+
+    /// Escape or the close button. The matches are no longer marked, and the keyboard goes back to the terminal.
+    private func closeFindBar() {
+        guard finding, let bar = findBar else { return }
+        finding = false
+        session.find("")
+        window?.makeFirstResponder(self)
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Chrome.animation
+            bar.animator().alphaValue = 0
+        }) { [weak self] in
+            if self?.finding == false { bar.isHidden = true }
+        }
+        redraw()
+    }
+
+    private func makeFindBar() -> FindBar {
+        let bar = FindBar()
+        bar.onChange = { [weak self] text in
+            self?.session.find(text)
+            self?.redraw()
+        }
+        bar.onMove = { [weak self] back in self?.moveMatch(back: back) }
+        bar.onClose = { [weak self] in self?.closeFindBar() }
+        bar.alphaValue = 0
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(bar)
+        NSLayoutConstraint.activate([
+            bar.centerXAnchor.constraint(equalTo: centerXAnchor),
+            bar.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
+        ])
+        findBar = bar
+        return bar
     }
 
     // MARK: Key input

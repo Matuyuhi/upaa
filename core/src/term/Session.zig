@@ -29,6 +29,8 @@ stop_pipe: [2]c_int,
 /// Calls on_wakeup only when the screen change has not been reported yet. takeDirty resets it.
 dirty: std.atomic.Value(bool) = .init(false),
 callbacks: Callbacks,
+/// The find bar's search through the screen and the scrollback. null while the find bar is closed.
+search: vt.GhosttySearch = null,
 
 pub const Callbacks = extern struct {
     userdata: ?*anyopaque = null,
@@ -171,6 +173,7 @@ pub fn destroy(self: *Session) void {
     self.thread.join();
     self.pty.deinit();
     for (self.stop_pipe) |fd| _ = c.close(fd);
+    vt.ghostty_search_free(self.search);
     vt.ghostty_mouse_event_free(self.mouse_event);
     vt.ghostty_mouse_encoder_free(self.mouse_encoder);
     vt.ghostty_selection_gesture_free(self.gesture, self.terminal);
@@ -240,14 +243,130 @@ pub fn takeDirty(self: *Session) bool {
     return self.dirty.swap(false, .acq_rel);
 }
 
-/// Syncs the render state with the current screen. Holds the lock only while touching the terminal.
-pub fn updateRenderState(self: *Session, state: vt.GhosttyRenderState) bool {
+/// A match of the find bar's search in view, from its first cell to its last, in viewport cells.
+/// A match that runs over the top or bottom of the view is cut at the edge.
+pub const Match = struct {
+    start: vt.GhosttyPointCoordinate,
+    end: vt.GhosttyPointCoordinate,
+    /// The match that findNext moved to, which the find bar counts.
+    selected: bool = false,
+};
+
+/// What updateRenderState found besides the screen.
+pub const Update = struct {
+    /// Matches written.
+    matches: usize = 0,
+    /// The search has more of the scrollback to go through, so the screen should be drawn again soon.
+    searching: bool = false,
+};
+
+/// Syncs the render state with the current screen, and writes the find bar's matches in view to matches (as many as
+/// fit). Holds the lock only while touching the terminal. null on failure.
+pub fn updateRenderState(self: *Session, state: vt.GhosttyRenderState, matches: []Match) ?Update {
+    var update: Update = .{};
     {
         self.lock();
         defer self.unlock();
-        if (vt.ghostty_render_state_begin_update(state, self.terminal) != vt.GHOSTTY_SUCCESS) return false;
+        if (vt.ghostty_render_state_begin_update(state, self.terminal) != vt.GHOSTTY_SUCCESS) return null;
+        if (self.search != null) update.matches = self.matchesInView(matches);
     }
-    return vt.ghostty_render_state_end_update(state) == vt.GHOSTTY_SUCCESS;
+    if (vt.ghostty_render_state_end_update(state) != vt.GHOSTTY_SUCCESS) return null;
+    if (self.search != null) update.searching = self.searchScrollback();
+    return update;
+}
+
+/// Starts the find bar's search for needle through the screen and the scrollback, and selects the newest match.
+/// ASCII letters match either case. A needle that matches the same way as the last one keeps its results. An empty
+/// needle ends the search.
+pub fn find(self: *Session, needle: []const u8) void {
+    self.lock();
+    defer self.unlock();
+    if (needle.len == 0) {
+        vt.ghostty_search_free(self.search);
+        self.search = null;
+        return;
+    }
+    if (self.search == null and vt.ghostty_search_new(null, &self.search, self.terminal) != vt.GHOSTTY_SUCCESS) return;
+    const value: vt.GhosttyString = .{ .ptr = needle.ptr, .len = needle.len };
+    _ = vt.ghostty_search_set(self.search, vt.GHOSTTY_SEARCH_OPT_NEEDLE, &value);
+    // The search sees the screen only once fed, and only then has a match to select.
+    _ = vt.ghostty_search_feed(self.search);
+    var index: usize = 0;
+    if (vt.ghostty_search_get(self.search, vt.GHOSTTY_SEARCH_DATA_SELECTED_INDEX, &index) != vt.GHOSTTY_SUCCESS)
+        _ = vt.ghostty_search_select_next(self.search);
+}
+
+/// Selects the next older match (the next newer one with back), wrapping around, and scrolls to it if it is out of view.
+pub fn findNext(self: *Session, back: bool) void {
+    self.lock();
+    defer self.unlock();
+    if (self.search == null) return;
+    _ = if (back) vt.ghostty_search_select_prev(self.search) else vt.ghostty_search_select_next(self.search);
+}
+
+/// How many matches the search has found so far. selected is set to the selected one's place, counted from the
+/// newest (1), or 0 if none is selected.
+pub fn findCount(self: *Session, selected: *usize) usize {
+    selected.* = 0;
+    if (self.search == null) return 0;
+    var total: usize = 0;
+    var index: usize = 0;
+    _ = vt.ghostty_search_get(self.search, vt.GHOSTTY_SEARCH_DATA_TOTAL_MATCHES, &total);
+    if (vt.ghostty_search_get(self.search, vt.GHOSTTY_SEARCH_DATA_SELECTED_INDEX, &index) == vt.GHOSTTY_SUCCESS) selected.* = index + 1;
+    return total;
+}
+
+/// Brings the search up to date with the terminal and writes its matches in view to out. The caller holds the lock.
+fn matchesInView(self: *Session, out: []Match) usize {
+    _ = vt.ghostty_search_feed(self.search);
+    var current = std.mem.zeroes(vt.GhosttySelection);
+    const has_current = vt.ghostty_search_get(self.search, vt.GHOSTTY_SEARCH_DATA_SELECTED_MATCH, &current) == vt.GHOSTTY_SUCCESS;
+
+    // Asked once for the count, then for the matches.
+    var found: vt.GhosttySelectionBuffer = .{ .ptr = null, .cap = 0, .len = 0 };
+    if (vt.ghostty_search_get(self.search, vt.GHOSTTY_SEARCH_DATA_VIEWPORT_MATCHES, &found) != vt.GHOSTTY_OUT_OF_SPACE) return 0;
+    const all = alloc.alloc(vt.GhosttySelection, found.len) catch return 0;
+    defer alloc.free(all);
+    found = .{ .ptr = all.ptr, .cap = all.len, .len = 0 };
+    if (vt.ghostty_search_get(self.search, vt.GHOSTTY_SEARCH_DATA_VIEWPORT_MATCHES, &found) != vt.GHOSTTY_SUCCESS) return 0;
+
+    var cols: u16 = 0;
+    var rows: u16 = 0;
+    _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_COLS, &cols);
+    _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_ROWS, &rows);
+    if (cols == 0 or rows == 0) return 0;
+    var n: usize = 0;
+    // The list can hold matches just outside the view, on the same page of the scrollback.
+    for (all[0..found.len]) |match| {
+        if (n == out.len) break;
+        const start = self.inView(&match.start, rows);
+        const end = self.inView(&match.end, rows);
+        if (start == null and end == null) continue;
+        out[n] = .{
+            .start = start orelse .{ .x = 0, .y = 0 },
+            .end = end orelse .{ .x = cols - 1, .y = rows - 1 },
+            .selected = has_current and std.meta.eql(match.start, current.start) and std.meta.eql(match.end, current.end),
+        };
+        n += 1;
+    }
+    return n;
+}
+
+/// The cell in viewport coordinates, or null when it is out of view. The caller holds the lock.
+fn inView(self: *Session, ref: *const vt.GhosttyGridRef, rows: u16) ?vt.GhosttyPointCoordinate {
+    var point: vt.GhosttyPointCoordinate = undefined;
+    if (vt.ghostty_terminal_point_from_grid_ref(self.terminal, ref, vt.GHOSTTY_POINT_TAG_VIEWPORT, &point) != vt.GHOSTTY_SUCCESS) return null;
+    return if (point.y < rows) point else null;
+}
+
+/// Goes through the part of the scrollback that the last feed handed the search. It works on its own copy, so the lock
+/// is not needed. Returns whether more of the scrollback is left for the next feed.
+fn searchScrollback(self: *Session) bool {
+    var status: vt.GhosttySearchStatus = vt.GHOSTTY_SEARCH_STATUS_RUNNING;
+    while (status == vt.GHOSTTY_SEARCH_STATUS_RUNNING) {
+        if (vt.ghostty_search_tick(self.search, &status) != vt.GHOSTTY_SUCCESS) return false;
+    }
+    return status == vt.GHOSTTY_SEARCH_STATUS_FEED_REQUIRED;
 }
 
 /// Whether the program asked for mouse events (vim with mouse=a, htop, ...). If so, clicks and the wheel go to
@@ -744,6 +863,42 @@ test "paste sends safe text, and holds back text that could run a command" {
     try std.testing.expectEqual(PasteResult.rejected, self.paste("\ntwo\n", false));
     try std.testing.expectEqual(PasteResult.pasted, self.paste("\ntwo\n", true));
     try self.waitForText("got:one/two", &out);
+}
+
+test "the find bar's search finds the matches in view and moves between them" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "echo one-upaa two-upaa; read _" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+    try self.waitForText("two-upaa", &out);
+
+    var state: vt.GhosttyRenderState = null;
+    try std.testing.expectEqual(vt.GHOSTTY_SUCCESS, vt.ghostty_render_state_new(null, &state));
+    defer vt.ghostty_render_state_free(state);
+    var matches: [8]Match = undefined;
+    var selected: usize = 0;
+
+    // ASCII letters match either case. The newest match is selected first.
+    self.find("UPAA");
+    var update = self.updateRenderState(state, &matches) orelse return error.UpdateFailed;
+    try std.testing.expectEqual(@as(usize, 2), update.matches);
+    try std.testing.expectEqual(@as(usize, 2), self.findCount(&selected));
+    try std.testing.expectEqual(@as(usize, 1), selected);
+    try std.testing.expect(matches[0].selected != matches[1].selected);
+    const first = if (matches[0].selected) matches[0] else matches[1];
+    try std.testing.expectEqual(@as(u16, 4), first.end.x - first.start.x + 1);
+
+    // Next goes to the other one; the count stays.
+    self.findNext(false);
+    update = self.updateRenderState(state, &matches) orelse return error.UpdateFailed;
+    try std.testing.expectEqual(@as(usize, 2), self.findCount(&selected));
+    try std.testing.expectEqual(@as(usize, 2), selected);
+    const second = if (matches[0].selected) matches[0] else matches[1];
+    try std.testing.expect(!std.meta.eql(first.start, second.start));
+
+    self.find("");
+    update = self.updateRenderState(state, &matches) orelse return error.UpdateFailed;
+    try std.testing.expectEqual(@as(usize, 0), update.matches);
+    try std.testing.expectEqual(@as(usize, 0), self.findCount(&selected));
 }
 
 test "mouse events go to programs that ask for them" {

@@ -96,6 +96,21 @@ export fn upaa_session_select_all(session: *Session) void {
     session.selectAll();
 }
 
+/// Starts the find bar's search for needle (UTF-8) and selects the newest match. An empty needle ends the search.
+export fn upaa_session_find(session: *Session, needle: [*]const u8, len: usize) void {
+    session.find(needle[0..len]);
+}
+
+/// Selects the next older match (the next newer one with back), scrolling to it.
+export fn upaa_session_find_next(session: *Session, back: bool) void {
+    session.findNext(back);
+}
+
+/// How many matches the search has found so far. selected gets the selected one's place from the newest (1), 0 if none.
+export fn upaa_session_find_count(session: *Session, selected: *usize) usize {
+    return session.findCount(selected);
+}
+
 /// Whether the program asked for mouse events. If so, send clicks and the wheel to upaa_session_report_mouse unless Shift is held.
 export fn upaa_session_wants_mouse(session: *Session) bool {
     return session.wantsMouse();
