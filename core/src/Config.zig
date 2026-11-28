@@ -12,10 +12,13 @@ const vt = @import("ghostty");
 font_family: [129]u8 = fixed("Menlo"),
 /// Points.
 font_size: f64 = 13,
+/// How much of the default background color covers what is behind the window (0 to 1). Cells with a color of their
+/// own stay opaque. Below 1 by default, for the glass look of design A3.
+background_opacity: f64 = 0.8,
 /// Cells.
 window_width: u16 = 80,
 window_height: u16 = 24,
-/// null keeps libghostty-vt's default.
+/// null takes design A3's color for light or dark mode (Theme).
 foreground: ?vt.GhosttyColorRgb = null,
 background: ?vt.GhosttyColorRgb = null,
 palette: [256]?vt.GhosttyColorRgb = @splat(null),
@@ -26,6 +29,7 @@ problem: [80]u8 = @splat(0),
 pub const Values = extern struct {
     font_family: [*:0]const u8,
     font_size: f64,
+    background_opacity: f64,
     window_width: u16,
     window_height: u16,
     /// The first line that could not be read, or null.
@@ -58,25 +62,56 @@ pub fn values(config: *const Config) Values {
     return .{
         .font_family = config.font_family[0 .. config.font_family.len - 1 :0].ptr,
         .font_size = config.font_size,
+        .background_opacity = config.background_opacity,
         .window_width = config.window_width,
         .window_height = config.window_height,
         .problem = if (config.problem[0] == 0) null else config.problem[0 .. config.problem.len - 1 :0].ptr,
     };
 }
 
-/// Sets the colors on a new terminal. Colors the file does not name keep libghostty-vt's defaults.
-pub fn applyColors(config: *const Config, terminal: vt.GhosttyTerminal) void {
-    if (config.foreground) |rgb| _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &rgb);
-    if (config.background) |rgb| _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &rgb);
+/// Design A3's colors for light and dark mode, for what the file does not name.
+const Theme = struct {
+    foreground: vt.GhosttyColorRgb,
+    background: vt.GhosttyColorRgb,
+    /// Palette 2 to 5: green, yellow, blue, magenta. The others keep libghostty-vt's defaults.
+    palette: [4]vt.GhosttyColorRgb,
+
+    const light: Theme = .{
+        .foreground = hex(0x1d1d1f),
+        .background = hex(0xffffff),
+        .palette = .{ hex(0x1a7f1a), hex(0x8a6a00), hex(0x0a49c9), hex(0x9b2393) },
+    };
+    const dark: Theme = .{
+        .foreground = hex(0xf2f2f7),
+        .background = hex(0x18181c),
+        .palette = .{ hex(0x7ccf7c), hex(0xe5c07b), hex(0x6aa8ff), hex(0xd79be0) },
+    };
+
+    fn hex(value: u24) vt.GhosttyColorRgb {
+        return .{ .r = @truncate(value >> 16), .g = @truncate(value >> 8), .b = @truncate(value) };
+    }
+};
+
+/// The terminal's default background in light or dark mode.
+pub fn defaultBackground(config: *const Config, dark: bool) vt.GhosttyColorRgb {
+    return config.background orelse (if (dark) Theme.dark else Theme.light).background;
+}
+
+/// Sets the terminal's colors for light or dark mode: the file's, and the theme's where the file names none.
+pub fn applyColors(config: *const Config, terminal: vt.GhosttyTerminal, dark: bool) void {
+    const theme = if (dark) Theme.dark else Theme.light;
+    const foreground = config.foreground orelse theme.foreground;
+    const background = config.defaultBackground(dark);
+    _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &foreground);
+    _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &background);
 
     var palette: [256]vt.GhosttyColorRgb = undefined;
     if (vt.ghostty_terminal_get(terminal, vt.GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT, &palette) != vt.GHOSTTY_SUCCESS) return;
-    var changed = false;
+    @memcpy(palette[2..6], &theme.palette);
     for (config.palette, &palette) |entry, *slot| if (entry) |rgb| {
         slot.* = rgb;
-        changed = true;
     };
-    if (changed) _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, &palette);
+    _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, &palette);
 }
 
 fn set(config: *Config, key: []const u8, value: []const u8) error{ UnknownKey, InvalidValue }!void {
@@ -88,6 +123,10 @@ fn set(config: *Config, key: []const u8, value: []const u8) error{ UnknownKey, I
         const size = std.fmt.parseFloat(f64, value) catch return error.InvalidValue;
         if (!(size >= 4 and size <= 200)) return error.InvalidValue;
         config.font_size = size;
+    } else if (std.mem.eql(u8, key, "background-opacity")) {
+        const opacity = std.fmt.parseFloat(f64, value) catch return error.InvalidValue;
+        if (!(opacity >= 0 and opacity <= 1)) return error.InvalidValue;
+        config.background_opacity = opacity;
     } else if (std.mem.eql(u8, key, "window-width")) {
         config.window_width = try cells(value, 10);
     } else if (std.mem.eql(u8, key, "window-height")) {
@@ -135,6 +174,7 @@ test "defaults" {
     const v = config.values();
     try std.testing.expectEqualStrings("Menlo", std.mem.span(v.font_family));
     try std.testing.expectEqual(@as(f64, 13), v.font_size);
+    try std.testing.expectEqual(@as(f64, 0.8), v.background_opacity);
     try std.testing.expectEqual(@as(u16, 80), v.window_width);
     try std.testing.expectEqual(@as(u16, 24), v.window_height);
     try std.testing.expect(v.problem == null);
@@ -145,6 +185,7 @@ test "settings, and the first line that cannot be read" {
         \\# comment
         \\font-family = "JetBrains Mono"
         \\font-size = 14.5
+        \\background-opacity = 1
         \\window-width = 100
         \\window-height=30
         \\
@@ -156,12 +197,13 @@ test "settings, and the first line that cannot be read" {
     const v = config.values();
     try std.testing.expectEqualStrings("JetBrains Mono", std.mem.span(v.font_family));
     try std.testing.expectEqual(@as(f64, 14.5), v.font_size);
+    try std.testing.expectEqual(@as(f64, 1), v.background_opacity);
     try std.testing.expectEqual(@as(u16, 100), v.window_width);
     try std.testing.expectEqual(@as(u16, 30), v.window_height);
     try std.testing.expectEqual(vt.GhosttyColorRgb{ .r = 0x1e, .g = 0x1e, .b = 0x2e }, config.background.?);
     try std.testing.expectEqual(vt.GhosttyColorRgb{ .r = 0xff, .g = 0, .b = 0 }, config.palette[1].?);
     try std.testing.expect(config.palette[2] == null);
-    try std.testing.expectEqualStrings("config line 9: unknown key", std.mem.span(v.problem.?));
+    try std.testing.expectEqualStrings("config line 10: unknown key", std.mem.span(v.problem.?));
 
     const bad = parse("window-width = 3\nwindow-width = 120\nno equals sign");
     try std.testing.expectEqual(@as(u16, 120), bad.window_width);
@@ -173,7 +215,7 @@ test "colors reach the terminal" {
     try std.testing.expectEqual(vt.GHOSTTY_SUCCESS, vt.ghostty_terminal_new(null, &terminal, 10, 3));
     defer vt.ghostty_terminal_free(terminal);
     const config = parse("foreground = #102030\nbackground = black\npalette = 4=#abcdef");
-    config.applyColors(terminal);
+    config.applyColors(terminal, true);
 
     var rgb: vt.GhosttyColorRgb = undefined;
     try std.testing.expectEqual(vt.GHOSTTY_SUCCESS, vt.ghostty_terminal_get(terminal, vt.GHOSTTY_TERMINAL_DATA_COLOR_FOREGROUND, &rgb));
@@ -183,4 +225,12 @@ test "colors reach the terminal" {
     var palette: [256]vt.GhosttyColorRgb = undefined;
     try std.testing.expectEqual(vt.GHOSTTY_SUCCESS, vt.ghostty_terminal_get(terminal, vt.GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, &palette));
     try std.testing.expectEqual(vt.GhosttyColorRgb{ .r = 0xab, .g = 0xcd, .b = 0xef }, palette[4]);
+    try std.testing.expectEqual(Theme.dark.palette[1], palette[3]);
+
+    // What the file does not name follows light or dark mode.
+    parse("").applyColors(terminal, false);
+    try std.testing.expectEqual(vt.GHOSTTY_SUCCESS, vt.ghostty_terminal_get(terminal, vt.GHOSTTY_TERMINAL_DATA_COLOR_BACKGROUND, &rgb));
+    try std.testing.expectEqual(Theme.light.background, rgb);
+    try std.testing.expectEqual(vt.GHOSTTY_SUCCESS, vt.ghostty_terminal_get(terminal, vt.GHOSTTY_TERMINAL_DATA_COLOR_PALETTE, &palette));
+    try std.testing.expectEqual(Theme.light.palette[2], palette[4]);
 }

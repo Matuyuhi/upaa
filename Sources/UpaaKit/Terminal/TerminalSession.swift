@@ -5,6 +5,7 @@ import Foundation
 final class TerminalSession {
     let handle: OpaquePointer
     private let events: Events
+    private let config: Config?
 
     /// The screen changed. Called on the main thread.
     var onWakeup: (() -> Void)? {
@@ -18,8 +19,15 @@ final class TerminalSession {
         set { events.onExit = newValue }
     }
 
-    /// If command is nil, starts the login shell; otherwise starts /bin/sh -c command. config nil keeps the default colors.
-    init?(cols: UInt16, rows: UInt16, command: String? = nil, config: Config? = nil) {
+    /// The program set the title (read it with title). Called on the main thread.
+    var onTitle: (() -> Void)? {
+        get { events.onTitle }
+        set { events.onTitle = newValue }
+    }
+
+    /// If command is nil, starts the login shell; otherwise starts /bin/sh -c command. cwd nil starts in the home directory
+    /// (or the current one for a command). The colors are libghostty-vt's until setColors; config gives the ones it names.
+    init?(cols: UInt16, rows: UInt16, command: String? = nil, cwd: String? = nil, config: Config? = nil) {
         let events = Events()
         var callbacks = UpaaSessionCallbacks(
             userdata: Unmanaged.passUnretained(events).toOpaque(),
@@ -30,11 +38,21 @@ final class TerminalSession {
             on_exit: { userdata in
                 let events = Unmanaged<Events>.fromOpaque(userdata!).takeUnretainedValue()
                 DispatchQueue.main.async { events.onExit?() }
+            },
+            on_title: { userdata in
+                let events = Unmanaged<Events>.fromOpaque(userdata!).takeUnretainedValue()
+                DispatchQueue.main.async { events.onTitle?() }
             }
         )
-        guard let handle = upaa_session_new(cols, rows, command, config?.handle, &callbacks) else { return nil }
+        guard let handle = upaa_session_new(cols, rows, command, cwd, &callbacks) else { return nil }
         self.handle = handle
         self.events = events
+        self.config = config
+    }
+
+    /// Sets the default colors for light or dark mode: the config's, and design A3's where it names none.
+    func setColors(dark: Bool) {
+        upaa_session_set_colors(handle, config?.handle, dark)
     }
 
     deinit {
@@ -111,6 +129,20 @@ final class TerminalSession {
         upaa_session_resize(handle, cols, rows, UInt32(cellWidth), UInt32(cellHeight))
     }
 
+    /// The shell's current directory, or nil if unknown. Programs it started (such as Claude Code) may be elsewhere.
+    var cwd: String? {
+        var out = [UInt8](repeating: 0, count: 1024)
+        let n = upaa_session_cwd(handle, &out, out.count)
+        return n > 0 ? String(decoding: out.prefix(n), as: UTF8.self) : nil
+    }
+
+    /// The title the program set (OSC 0 or 2), or nil if it set none.
+    var title: String? {
+        var out = [UInt8](repeating: 0, count: 1024)
+        let n = upaa_session_title(handle, &out, out.count)
+        return n > 0 ? String(decoding: out.prefix(n), as: UTF8.self) : nil
+    }
+
     /// Plain text of the screen.
     func plainText() -> String {
         var out = [UInt8](repeating: 0, count: 64 * 1024)
@@ -128,5 +160,6 @@ final class TerminalSession {
     private final class Events {
         var onWakeup: (() -> Void)?
         var onExit: (() -> Void)?
+        var onTitle: (() -> Void)?
     }
 }

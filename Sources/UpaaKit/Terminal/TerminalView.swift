@@ -4,8 +4,8 @@ import MetalKit
 
 /// A view that displays one terminal and receives key input. Redraws only when the screen changes.
 final class TerminalView: MTKView, MTKViewDelegate {
-    private let session: TerminalSession
-    private let renderer: Renderer
+    let session: TerminalSession
+    let renderer: Renderer
     private let commandQueue: MTLCommandQueue
     private var gridSize: (cols: Int, rows: Int) = (0, 0)
     /// The cursor cell from the last frame. The IME candidate window is placed below it.
@@ -19,6 +19,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
     private var mascotTimer: Timer?
     /// A redraw is waiting to run after the current event.
     private var redrawQueued = false
+    /// This view took the keyboard (a click on it, or the window choosing it).
+    var onFocus: (() -> Void)?
 
     /// Drawable pixels per view point (2 on Retina).
     private var scale: CGFloat { drawableSize.width / max(bounds.width, 1) }
@@ -39,6 +41,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
         enableSetNeedsDisplay = false
         delegate = self
         session.onWakeup = { [weak self] in self?.redraw() }
+        session.setColors(dark: effectiveAppearance.isDark)
     }
 
     @available(*, unavailable)
@@ -47,6 +50,15 @@ final class TerminalView: MTKView, MTKViewDelegate {
     }
 
     // MARK: Drawing
+
+    /// Points kept free above the text, for chrome that floats over the terminal. The background still fills them.
+    var topInset: CGFloat = 0 {
+        didSet {
+            guard topInset != oldValue else { return }
+            renderer.extraTop = Int((topInset * (window?.backingScaleFactor ?? 2)).rounded())
+            if drawableSize.width > 0 { mtkView(self, drawableSizeWillChange: drawableSize) }
+        }
+    }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         // The drawable needs a frame at its new size even when the grid stays the same.
@@ -70,10 +82,24 @@ final class TerminalView: MTKView, MTKViewDelegate {
         }
     }
 
+    /// A tab that comes back into the window needs a frame, since it was not drawn while it was hidden.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        layer?.isOpaque = renderer.backgroundOpacity >= 1
+        if window != nil { redraw() }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        session.setColors(dark: effectiveAppearance.isDark)
+        redraw()
+    }
+
     func draw(in view: MTKView) {
         // Register to receive the next change notification before drawing.
         _ = session.takeDirty()
-        guard let pass = currentRenderPassDescriptor,
+        guard window != nil,
+              let pass = currentRenderPassDescriptor,
               let drawable = currentDrawable,
               let commandBuffer = commandQueue.makeCommandBuffer()
         else { return }
@@ -227,6 +253,12 @@ final class TerminalView: MTKView, MTKViewDelegate {
     // MARK: Key input
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func becomeFirstResponder() -> Bool {
+        guard super.becomeFirstResponder() else { return false }
+        onFocus?()
+        return true
+    }
 
     override func keyDown(with event: NSEvent) {
         // Keys that include ⌘ are left to menu shortcuts.

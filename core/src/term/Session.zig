@@ -36,6 +36,8 @@ pub const Callbacks = extern struct {
     on_wakeup: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
     /// The child process exited. Called from the read thread.
     on_exit: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
+    /// The program set the title (OSC 0 or 2). Called from the read thread with the lock held; read it with title().
+    on_title: ?*const fn (userdata: ?*anyopaque) callconv(.c) void = null,
 };
 
 /// One key press (release). Same layout as UpaaKeyEvent in Sources/CUpaaCore.
@@ -96,9 +98,9 @@ pub const Options = struct {
     size: Pty.Size,
     /// null means the login shell.
     command: ?[*:0]const u8 = null,
+    /// Directory to start in. null means the home directory for the login shell, the current one for a command.
+    cwd: ?[*:0]const u8 = null,
     callbacks: Callbacks = .{},
-    /// Colors for the terminal. null keeps libghostty-vt's defaults.
-    config: ?*const Config = null,
 };
 
 pub fn create(opts: Options) !*Session {
@@ -111,10 +113,10 @@ pub fn create(opts: Options) !*Session {
     errdefer vt.ghostty_terminal_free(terminal);
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_USERDATA, self);
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_WRITE_PTY, @ptrCast(&onWritePty));
+    _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, @ptrCast(&onTitleChanged));
     // The library default (10,000 bytes) keeps only a few hundred lines of scrollback.
     var scrollback: usize = 10 * 1024 * 1024;
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollback);
-    if (opts.config) |config| config.applyColors(terminal);
 
     var key_encoder: vt.GhosttyKeyEncoder = null;
     if (vt.ghostty_key_encoder_new(null, &key_encoder) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
@@ -143,7 +145,7 @@ pub fn create(opts: Options) !*Session {
         _ = c.close(fd);
     };
 
-    const pty = try Pty.spawn(opts.command, opts.size);
+    const pty = try Pty.spawn(opts.command, opts.cwd, opts.size);
     errdefer pty.deinit();
 
     self.* = .{
@@ -224,6 +226,13 @@ pub fn resize(self: *Session, size: Pty.Size, cell_width_px: u32, cell_height_px
     self.pty.resize(size);
 }
 
+/// Sets the default colors for light or dark mode (Config.applyColors).
+pub fn setColors(self: *Session, config: *const Config, dark: bool) void {
+    self.lock();
+    defer self.unlock();
+    config.applyColors(self.terminal, dark);
+}
+
 /// True if the screen changed since the previous call. Resets so that the next on_wakeup is received.
 pub fn takeDirty(self: *Session) bool {
     return self.dirty.swap(false, .acq_rel);
@@ -247,6 +256,22 @@ pub fn wantsMouse(self: *Session) bool {
     var tracking: vt.GhosttyMouseTrackingMode = vt.GHOSTTY_MOUSE_TRACKING_NONE;
     _ = vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &tracking);
     return tracking != vt.GHOSTTY_MOUSE_TRACKING_NONE;
+}
+
+/// The shell's current directory, copied into out. Returns its length; 0 if unknown or longer than out.
+pub fn cwd(self: *Session, out: []u8) usize {
+    return (self.pty.cwd(out) orelse return 0).len;
+}
+
+/// The title the program set (UTF-8), copied into out. Returns the full length; 0 if none was set.
+pub fn title(self: *Session, out: []u8) usize {
+    self.lock();
+    defer self.unlock();
+    var text: vt.GhosttyString = .{ .ptr = null, .len = 0 };
+    if (vt.ghostty_terminal_get(self.terminal, vt.GHOSTTY_TERMINAL_DATA_TITLE, &text) != vt.GHOSTTY_SUCCESS) return 0;
+    const n = @min(text.len, out.len);
+    if (n > 0) @memcpy(out[0..n], text.ptr[0..n]);
+    return text.len;
 }
 
 /// Sends a mouse event to the program in the format and mode it asked for. A wheel step is a press of button 4 or 5.
@@ -486,6 +511,11 @@ fn onWritePty(_: vt.GhosttyTerminal, userdata: ?*anyopaque, data: [*c]const u8, 
     _ = self.pty.writeAll(data[0..len]);
 }
 
+fn onTitleChanged(_: vt.GhosttyTerminal, userdata: ?*anyopaque) callconv(.c) void {
+    const self: *Session = @ptrCast(@alignCast(userdata orelse return));
+    if (self.callbacks.on_title) |f| f(self.callbacks.userdata);
+}
+
 fn waitForText(self: *Session, needle: []const u8, out: []u8) !void {
     var tries: usize = 0;
     while (tries < 500) : (tries += 1) {
@@ -505,6 +535,27 @@ test "shell output reaches the terminal" {
     var out: [4096]u8 = undefined;
     try self.waitForText("upaa-42", &out);
     try std.testing.expect(self.takeDirty());
+}
+
+test "a title set by the program can be read back" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "printf '\\033]2;upaa-title\\007title-sent'; read _" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+    try self.waitForText("title-sent", &out);
+    var buf: [64]u8 = undefined;
+    const n = self.title(&buf);
+    try std.testing.expectEqualStrings("upaa-title", buf[0..n]);
+}
+
+test "the shell starts in the given directory, and its current directory can be read back" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "pwd; cd /bin && echo moved; read _", .cwd = "/usr" });
+    defer self.destroy();
+    var out: [4096]u8 = undefined;
+    try self.waitForText("moved", &out);
+    const n = self.plainText(&out) orelse return error.FormatFailed;
+    try std.testing.expect(std.mem.indexOf(u8, out[0..@min(n, out.len)], "/usr") != null);
+    var buf: [1024]u8 = undefined;
+    try std.testing.expectEqualStrings("/bin", buf[0..self.cwd(&buf)]);
 }
 
 test "resize is visible to the child" {

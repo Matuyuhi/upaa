@@ -31,8 +31,11 @@ Works today:
 - 10 MB of scrollback, scrolled with the wheel or trackpad
 - Mouse input for programs that ask for it (vim with `mouse=a`, htop); hold Shift to select instead
 - A config file for the font, colors and window size (see Configuration)
+- Windows and tabs named after the title the program sets (Cmd-N, Cmd-T, Cmd-Shift-[ and Cmd-Shift-], Cmd-1 to Cmd-9); the tabs are a panel down the left side, or a row at the top (Cmd-B)
+- A right panel with the changed files of the current shell's git repository and their diffs (Cmd-J)
+- Split panes (Cmd-D to the right, Cmd-Shift-D below, Cmd-[ and Cmd-] to move, Cmd-W to close); a new pane or tab starts in the current shell's directory
 
-Not yet: tabs and splits, search.
+Not yet: search, and the list of links a session printed.
 
 ## Install
 
@@ -66,11 +69,13 @@ window-width = 100
 window-height = 30
 foreground = #cdd6f4
 background = #1e1e2e
+# how much the background covers what is behind the window, 0 to 1 (default 0.8)
+background-opacity = 0.8
 # one of the 256 colors; repeat the line for others
 palette = 1=#f38ba8
 ```
 
-Colors are `#rrggbb`, `#rgb` or an X11 name. A line that cannot be read keeps the default, and the first one is shown in the window. Changes take effect the next time upaa starts.
+Colors are `#rrggbb`, `#rgb` or an X11 name. Without `foreground`, `background` and palette 2 to 5, the colors follow light and dark mode. A line that cannot be read keeps the default, and the first one is shown in the window. Changes take effect the next time upaa starts.
 
 ## Development
 

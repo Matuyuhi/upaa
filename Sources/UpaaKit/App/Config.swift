@@ -7,6 +7,8 @@ final class Config {
     let fontFamily: String
     /// Points.
     let fontSize: Double
+    /// How much of the default background color covers what is behind the window (0 to 1).
+    let backgroundOpacity: Double
     /// Cells.
     let cols: Int
     let rows: Int
@@ -20,6 +22,7 @@ final class Config {
         let values = upaa_config_values(handle)
         fontFamily = String(cString: values.font_family)
         fontSize = values.font_size
+        backgroundOpacity = values.background_opacity
         cols = Int(values.window_width)
         rows = Int(values.window_height)
         problem = values.problem.map { String(cString: $0) }
@@ -27,6 +30,11 @@ final class Config {
 
     deinit {
         upaa_config_free(handle)
+    }
+
+    /// The terminal's default background in light or dark mode, as 0xRRGGBB.
+    func background(dark: Bool) -> UInt32 {
+        upaa_config_background(handle, dark)
     }
 
     /// Reads the user's file. Without one, every setting is the default.

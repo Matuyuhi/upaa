@@ -20,6 +20,8 @@ typedef struct {
     const char *font_family;
     // Points.
     double font_size;
+    // How much of the default background color covers what is behind the window (0 to 1).
+    double background_opacity;
     // Cells.
     uint16_t window_width;
     uint16_t window_height;
@@ -31,24 +33,32 @@ typedef struct {
 UpaaConfig *upaa_config_new(const uint8_t *text, size_t len);
 void upaa_config_free(UpaaConfig *config);
 UpaaConfigValues upaa_config_values(const UpaaConfig *config);
+// The terminal's default background in light or dark mode, as 0xRRGGBB.
+uint32_t upaa_config_background(const UpaaConfig *config, bool dark);
 
 // Terminal session (bundles the PTY, the shell, and the libghostty-vt terminal)
 
 typedef struct UpaaSession UpaaSession;
 
-// Both are called from the Zig read thread.
+// All are called from the Zig read thread.
 typedef struct {
     void *userdata;
     // The screen changed. The next call does not come until upaa_session_take_dirty is called.
     void (*on_wakeup)(void *userdata);
     // The child process exited.
     void (*on_exit)(void *userdata);
+    // The program set the title (OSC 0 or 2). Read it with upaa_session_title.
+    void (*on_title)(void *userdata);
 } UpaaSessionCallbacks;
 
-// If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. Returns NULL on failure.
-// The colors come from config (NULL keeps the defaults); config can be freed afterwards.
-UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const UpaaConfig *config,
+// If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. cwd NULL starts in the home
+// directory (login shell) or the current one (command). Returns NULL on failure.
+// The colors are libghostty-vt's until upaa_session_set_colors.
+UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const char *cwd,
                               const UpaaSessionCallbacks *callbacks);
+// Sets the default colors for light or dark mode: config's, and design A3's where it names none (config NULL: all A3's).
+// config can be freed afterwards.
+void upaa_session_set_colors(UpaaSession *session, const UpaaConfig *config, bool dark);
 void upaa_session_free(UpaaSession *session);
 void upaa_session_write(UpaaSession *session, const uint8_t *data, size_t len);
 // A key was pressed once (and released).
@@ -123,6 +133,10 @@ void upaa_session_scroll(UpaaSession *session, ptrdiff_t rows);
 void upaa_session_key(UpaaSession *session, const UpaaKeyEvent *event);
 void upaa_session_resize(UpaaSession *session, uint16_t cols, uint16_t rows, uint32_t cell_width_px, uint32_t cell_height_px);
 bool upaa_session_take_dirty(UpaaSession *session);
+// The shell's current directory, read from the kernel. Returns its length; 0 if unknown or longer than cap.
+size_t upaa_session_cwd(UpaaSession *session, uint8_t *out, size_t cap);
+// The title the program set (UTF-8). Returns the full length (0 if none); anything beyond cap is truncated.
+size_t upaa_session_title(UpaaSession *session, uint8_t *out, size_t cap);
 // Plain text of the screen. The return value is the original length; anything beyond cap is truncated. -1 on failure.
 ptrdiff_t upaa_session_plain_text(UpaaSession *session, uint8_t *out, size_t cap);
 
