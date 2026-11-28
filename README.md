@@ -12,7 +12,9 @@
 
 The UI and rendering are written in Swift (AppKit, Metal), the core in Zig, and terminal emulation is handled by [libghostty-vt](https://lib.ghostty.org/vt/).
 
-![upaa screenshot](tests/snapshots/styles.png)
+![upaa with tabs in the sidebar and a split pane](docs/images/light.png)
+
+![upaa with a dark color scheme and the changes panel showing a diff](docs/images/dark.png)
 
 ## Requirements
 
