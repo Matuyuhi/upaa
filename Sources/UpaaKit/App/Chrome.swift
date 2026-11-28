@@ -155,3 +155,57 @@ final class Clickable: NSView {
         onClick?()
     }
 }
+
+/// The window's ground (design A3, after Arc): a base color with three soft spots of color, for light and dark mode.
+final class Backdrop: NSView {
+    /// Where each spot is (from the top left, as fractions of the window), how far it reaches, and its colors.
+    private static let spots: [(x: CGFloat, y: CGFloat, reach: CGFloat, light: UInt32, dark: UInt32)] = [
+        (0.18, 0.22, 0.52, 0xa5c8ff, 0x3b5bdb),
+        (0.82, 0.30, 0.46, 0xd0bfff, 0x7048e8),
+        (0.60, 0.90, 0.58, 0x99e9f2, 0x0b7285),
+    ]
+    private static let base = (light: UInt32(0xeef1f6), dark: UInt32(0x111827))
+
+    private let layers = Self.spots.map { _ in CAGradientLayer() }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        for spot in layers {
+            spot.type = .radial
+            layer?.addSublayer(spot)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layers.forEach { $0.frame = bounds }
+        CATransaction.commit()
+    }
+
+    override func updateLayer() {
+        let dark = effectiveAppearance.isDark
+        layer?.backgroundColor = Self.color(dark ? Self.base.dark : Self.base.light).cgColor
+        for (layer, spot) in zip(layers, Self.spots) {
+            let color = Self.color(dark ? spot.dark : spot.light)
+            layer.colors = [color.cgColor, color.withAlphaComponent(0).cgColor]
+            // A layer's y runs up from the bottom. The radius is a fraction of the width and of the height.
+            layer.startPoint = CGPoint(x: spot.x, y: 1 - spot.y)
+            layer.endPoint = CGPoint(x: spot.x + spot.reach, y: 1 - spot.y + spot.reach)
+        }
+    }
+
+    private static func color(_ rgb: UInt32) -> NSColor {
+        NSColor(srgbRed: CGFloat(rgb >> 16 & 0xff) / 255, green: CGFloat(rgb >> 8 & 0xff) / 255,
+                blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
+    }
+}
