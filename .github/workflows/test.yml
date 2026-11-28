@@ -103,9 +103,8 @@ jobs:
               conf=default
               osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
             fi
-            # Each launch starts at the config's size, not where the last one left its window or with the windows it had.
+            # Each launch starts at the config's size, not where the last one left its window.
             defaults delete local.upaa 2>/dev/null || true
-            rm -rf ~/Library/"Saved Application State"/local.upaa.savedState
             XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa -AppleLanguages "($lang)" &
             pid=$!
             sleep 5
@@ -139,8 +138,6 @@ jobs:
           UPAA_NO_UPDATE_CHECK: "1"
         run: |
           dir=build/screenshots
-          defaults delete local.upaa 2>/dev/null || true
-          rm -rf ~/Library/"Saved Application State"/local.upaa.savedState
           XDG_CONFIG_HOME="$PWD/$dir/config" build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
           pid=$!
           sleep 5
@@ -177,9 +174,7 @@ jobs:
           failed=
           for keep in false true; do
             defaults delete local.upaa 2>/dev/null || true
-            rm -rf ~/Library/"Saved Application State"/local.upaa.savedState
             defaults write local.upaa NSQuitAlwaysKeepsWindows -bool "$keep"
-            touch "$dir/marker"
             build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
             pid=$!
             sleep 5
@@ -189,20 +184,12 @@ jobs:
               -e "tell application \"System Events\" to set position of window 1 of ($app) to {120, 90}" \
               -e "tell application \"System Events\" to set size of window 1 of ($app) to {900, 560}" || echo "could not open or move a window"
             sleep 1
-            date -u +%T
-            [ "$keep" = true ] && sleep 10
             before="$(swift "$dir/frames.swift" "$pid")"
             [ "$keep" = true ] || before="$(echo "$before" | head -n 1)"
             osascript -e "tell application \"System Events\" to set frontmost of ($app) to true" \
               -e 'tell application "System Events" to keystroke "q" using command down'
             for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
             kill -0 "$pid" 2>/dev/null && { echo "upaa did not quit on Cmd-Q"; kill "$pid"; exit 1; }
-            # TEMP diagnostics
-            date -u +%T
-            ls -laT ~/Library/"Saved Application State"/local.upaa.savedState || true
-            find ~/Library ~/.local "$TMPDIR" -newer "$dir/marker" -type f 2>/dev/null | grep -v -e /Caches/ -e /Logs/ | head -40 || true
-            log show --last 2m --predicate 'process == "upaa"' --style compact 2>/dev/null | grep -i -e restor -e "upaa diag" | tail -40 || true
-            defaults read local.upaa || true
             build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
             pid=$!
             sleep 5

@@ -147,22 +147,20 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         window.invalidateRestorableState()
     }
 
-    /// The system's saved windows (restoreWindow) learn of a move or a resize only when told; otherwise a window comes
-    /// back where it was made.
+    /// The frame kept for the system's saved window (willEncodeRestorableState) is kept again after a move or a resize.
     func windowDidMove(_ notification: Notification) {
-        NSLog("upaa diag moved \(NSStringFromRect(window.frame))")
         window.invalidateRestorableState()
     }
 
-    /// The system's saved window keeps the frame it had when it was made, so the frame is kept here as well.
+    /// The system's saved window comes back at the frame it had when it was made, so the frame is kept here as well
+    /// and put back once the system has restored the window. A full-screen window is left to the system.
     func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
-        NSLog("upaa diag encode \(window.frameDescriptor)")
+        guard !window.styleMask.contains(.fullScreen) else { return }
         state.encode(window.frameDescriptor, forKey: "frame")
     }
 
     func window(_ window: NSWindow, didDecodeRestorableState state: NSCoder) {
         guard let frame = state.decodeObject(of: NSString.self, forKey: "frame") else { return }
-        NSLog("upaa diag decode \(frame) at \(NSStringFromRect(window.frame))")
         window.setFrame(from: frame as String)
         Self.keepOnScreen(window)
     }
