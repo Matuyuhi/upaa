@@ -41,6 +41,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
         enableSetNeedsDisplay = false
         delegate = self
         session.onWakeup = { [weak self] in self?.redraw() }
+        session.setColors(dark: effectiveAppearance.isDark)
     }
 
     @available(*, unavailable)
@@ -86,6 +87,12 @@ final class TerminalView: MTKView, MTKViewDelegate {
         super.viewDidMoveToWindow()
         layer?.isOpaque = renderer.backgroundOpacity >= 1
         if window != nil { redraw() }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        session.setColors(dark: effectiveAppearance.isDark)
+        redraw()
     }
 
     func draw(in view: MTKView) {

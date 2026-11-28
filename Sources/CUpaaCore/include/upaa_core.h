@@ -33,6 +33,8 @@ typedef struct {
 UpaaConfig *upaa_config_new(const uint8_t *text, size_t len);
 void upaa_config_free(UpaaConfig *config);
 UpaaConfigValues upaa_config_values(const UpaaConfig *config);
+// The terminal's default background in light or dark mode, as 0xRRGGBB.
+uint32_t upaa_config_background(const UpaaConfig *config, bool dark);
 
 // Terminal session (bundles the PTY, the shell, and the libghostty-vt terminal)
 
@@ -51,9 +53,12 @@ typedef struct {
 
 // If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. cwd NULL starts in the home
 // directory (login shell) or the current one (command). Returns NULL on failure.
-// The colors come from config (NULL keeps the defaults); config can be freed afterwards.
-UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const char *cwd, const UpaaConfig *config,
+// The colors are libghostty-vt's until upaa_session_set_colors.
+UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const char *cwd,
                               const UpaaSessionCallbacks *callbacks);
+// Sets the default colors for light or dark mode: config's, and design A3's where it names none (config NULL: all A3's).
+// config can be freed afterwards.
+void upaa_session_set_colors(UpaaSession *session, const UpaaConfig *config, bool dark);
 void upaa_session_free(UpaaSession *session);
 void upaa_session_write(UpaaSession *session, const uint8_t *data, size_t len);
 // A key was pressed once (and released).

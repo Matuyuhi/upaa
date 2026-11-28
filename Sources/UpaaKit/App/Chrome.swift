@@ -1,20 +1,21 @@
 import AppKit
 
-/// Sizes and colors of the window's chrome (design A3). The numbers are first guesses from the mockup, to be tuned here.
+/// Sizes and colors of the window's chrome, from the design's mockup (M5: tabs, splits and search).
 enum Chrome {
     static let inset: CGFloat = 8
     static let headerHeight: CGFloat = 44
-    static let tabPanelWidth: CGFloat = 212
-    static let sidePanelWidth: CGFloat = 316
-    /// Horizontal tabs: the floating card on the right, and the room left of the tabs for the traffic lights.
-    static let cardWidth: CGFloat = 340
+    static let tabPanelWidth: CGFloat = 224
+    static let sidePanelWidth: CGFloat = 240
+    /// Horizontal tabs: the room left of the tabs for the traffic lights.
     static let trafficLightsWidth: CGFloat = 78
     static let inactivePaneAlpha: CGFloat = 0.6
 
-    /// Selected tab, selected file and the main button. The spec's white is lost on light glass without its shadow, so
-    /// the light one is a faint gray.
-    static let pill = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.07) }
-    static let terminalCornerRadius: CGFloat = 10
+    /// Selected tab, selected file, the branch and the main button.
+    static let pill = NSColor(name: nil) { NSColor(white: 1, alpha: $0.isDark ? 0.14 : 0.85) }
+    /// The tint of the glass panels.
+    static let glass = NSColor(name: nil) {
+        $0.isDark ? NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.45) : NSColor(white: 1, alpha: 0.5)
+    }
     static let addedLine = NSColor.systemGreen.withAlphaComponent(0.18)
     static let removedLine = NSColor.systemRed.withAlphaComponent(0.16)
 
@@ -29,7 +30,7 @@ enum Chrome {
     }
 }
 
-private extension NSAppearance {
+extension NSAppearance {
     var isDark: Bool { bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
 }
 
@@ -65,6 +66,7 @@ final class GlassPanel: NSView {
         if #available(macOS 26.0, *) {
             let view = NSGlassEffectView()
             view.cornerRadius = cornerRadius
+            view.tintColor = Chrome.glass
             view.contentView = content
             glass = view
         } else {

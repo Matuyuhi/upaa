@@ -44,6 +44,12 @@ export fn upaa_config_free(config: *Config) void {
     std.heap.c_allocator.destroy(config);
 }
 
+/// The terminal's default background in light or dark mode, as 0xRRGGBB.
+export fn upaa_config_background(config: *const Config, dark: bool) u32 {
+    const rgb = config.defaultBackground(dark);
+    return @as(u32, rgb.r) << 16 | @as(u32, rgb.g) << 8 | rgb.b;
+}
+
 export fn upaa_config_values(config: *const Config) Config.Values {
     return config.values();
 }
@@ -51,15 +57,19 @@ export fn upaa_config_values(config: *const Config) Config.Values {
 // Terminal session
 
 /// If command is null, starts the login shell; otherwise starts /bin/sh -c command. cwd null starts in the default directory.
-/// config null keeps the default colors.
-export fn upaa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, cwd: ?[*:0]const u8, config: ?*const Config, callbacks: ?*const Session.Callbacks) ?*Session {
+/// The colors are libghostty-vt's until upaa_session_set_colors.
+export fn upaa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, cwd: ?[*:0]const u8, callbacks: ?*const Session.Callbacks) ?*Session {
     return Session.create(.{
         .size = .{ .cols = cols, .rows = rows },
         .command = command,
         .cwd = cwd,
         .callbacks = if (callbacks) |cb| cb.* else .{},
-        .config = config,
     }) catch null;
+}
+
+/// Sets the default colors for light or dark mode: config's, and design A3's where it names none (config null: all A3's).
+export fn upaa_session_set_colors(session: *Session, config: ?*const Config, dark: bool) void {
+    session.setColors(config orelse &Config{}, dark);
 }
 
 export fn upaa_session_free(session: *Session) void {

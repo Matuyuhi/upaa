@@ -101,8 +101,6 @@ pub const Options = struct {
     /// Directory to start in. null means the home directory for the login shell, the current one for a command.
     cwd: ?[*:0]const u8 = null,
     callbacks: Callbacks = .{},
-    /// Colors for the terminal. null keeps libghostty-vt's defaults.
-    config: ?*const Config = null,
 };
 
 pub fn create(opts: Options) !*Session {
@@ -119,7 +117,6 @@ pub fn create(opts: Options) !*Session {
     // The library default (10,000 bytes) keeps only a few hundred lines of scrollback.
     var scrollback: usize = 10 * 1024 * 1024;
     _ = vt.ghostty_terminal_set(terminal, vt.GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollback);
-    if (opts.config) |config| config.applyColors(terminal);
 
     var key_encoder: vt.GhosttyKeyEncoder = null;
     if (vt.ghostty_key_encoder_new(null, &key_encoder) != vt.GHOSTTY_SUCCESS) return error.OutOfMemory;
@@ -227,6 +224,13 @@ pub fn resize(self: *Session, size: Pty.Size, cell_width_px: u32, cell_height_px
     defer self.unlock();
     _ = vt.ghostty_terminal_resize(self.terminal, size.cols, size.rows, cell_width_px, cell_height_px);
     self.pty.resize(size);
+}
+
+/// Sets the default colors for light or dark mode (Config.applyColors).
+pub fn setColors(self: *Session, config: *const Config, dark: bool) void {
+    self.lock();
+    defer self.unlock();
+    config.applyColors(self.terminal, dark);
 }
 
 /// True if the screen changed since the previous call. Resets so that the next on_wakeup is received.

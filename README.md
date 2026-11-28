@@ -69,13 +69,13 @@ window-width = 100
 window-height = 30
 foreground = #cdd6f4
 background = #1e1e2e
-# how much the background covers what is behind the window, 0 to 1 (default 0.85)
-background-opacity = 0.85
+# how much the background covers what is behind the window, 0 to 1 (default 0.8)
+background-opacity = 0.8
 # one of the 256 colors; repeat the line for others
 palette = 1=#f38ba8
 ```
 
-Colors are `#rrggbb`, `#rgb` or an X11 name. A line that cannot be read keeps the default, and the first one is shown in the window. Changes take effect the next time upaa starts.
+Colors are `#rrggbb`, `#rgb` or an X11 name. Without `foreground`, `background` and palette 2 to 5, the colors follow light and dark mode. A line that cannot be read keeps the default, and the first one is shown in the window. Changes take effect the next time upaa starts.
 
 ## Development
 

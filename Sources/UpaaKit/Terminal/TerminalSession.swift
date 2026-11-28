@@ -5,6 +5,7 @@ import Foundation
 final class TerminalSession {
     let handle: OpaquePointer
     private let events: Events
+    private let config: Config?
 
     /// The screen changed. Called on the main thread.
     var onWakeup: (() -> Void)? {
@@ -25,7 +26,7 @@ final class TerminalSession {
     }
 
     /// If command is nil, starts the login shell; otherwise starts /bin/sh -c command. cwd nil starts in the home directory
-    /// (or the current one for a command). config nil keeps the default colors.
+    /// (or the current one for a command). The colors are libghostty-vt's until setColors; config gives the ones it names.
     init?(cols: UInt16, rows: UInt16, command: String? = nil, cwd: String? = nil, config: Config? = nil) {
         let events = Events()
         var callbacks = UpaaSessionCallbacks(
@@ -43,9 +44,15 @@ final class TerminalSession {
                 DispatchQueue.main.async { events.onTitle?() }
             }
         )
-        guard let handle = upaa_session_new(cols, rows, command, cwd, config?.handle, &callbacks) else { return nil }
+        guard let handle = upaa_session_new(cols, rows, command, cwd, &callbacks) else { return nil }
         self.handle = handle
         self.events = events
+        self.config = config
+    }
+
+    /// Sets the default colors for light or dark mode: the config's, and design A3's where it names none.
+    func setColors(dark: Bool) {
+        upaa_session_set_colors(handle, config?.handle, dark)
     }
 
     deinit {

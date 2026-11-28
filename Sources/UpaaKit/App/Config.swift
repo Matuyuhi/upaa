@@ -32,6 +32,11 @@ final class Config {
         upaa_config_free(handle)
     }
 
+    /// The terminal's default background in light or dark mode, as 0xRRGGBB.
+    func background(dark: Bool) -> UInt32 {
+        upaa_config_background(handle, dark)
+    }
+
     /// Reads the user's file. Without one, every setting is the default.
     static func load() -> Config {
         let environment = ProcessInfo.processInfo.environment

@@ -52,7 +52,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Make the size change in steps of one cell.
         window.contentResizeIncrements = NSSize(
             width: Double(renderer.cellSize.width) / scale, height: Double(renderer.cellSize.height) / scale)
-        let tabs = TabbedWindow(window: window, first: terminal) { [weak self] cwd in self?.makeTerminal(cwd: cwd) }
+        let config = self.config
+        let background = NSColor(name: nil) {
+            let rgb = config.background(dark: $0.isDark)
+            return NSColor(srgbRed: CGFloat(rgb >> 16 & 0xff) / 255, green: CGFloat(rgb >> 8 & 0xff) / 255,
+                           blue: CGFloat(rgb & 0xff) / 255, alpha: config.backgroundOpacity)
+        }
+        let tabs = TabbedWindow(window: window, first: terminal, background: background) { [weak self] cwd in
+            self?.makeTerminal(cwd: cwd)
+        }
         tabs.onClose = { [weak self, weak tabs] in self?.windows.removeAll { $0 === tabs } }
         windows.append(tabs)
         return (window, terminal)
@@ -62,8 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeTerminal(cwd: String? = nil) -> TerminalView? {
         let scale = scale
         func makeRenderer(device: MTLDevice) -> Renderer? {
+            // The window's card behind the terminal has its default background, so the terminal draws none.
             try? Renderer(device: device, fontName: fontFamily, fontSize: config.fontSize, scale: scale, mascot: true,
-                         backgroundOpacity: config.backgroundOpacity)
+                         backgroundOpacity: 0)
         }
         guard let device = MTLCreateSystemDefaultDevice(),
               let renderer = makeRenderer(device: device) ?? {
