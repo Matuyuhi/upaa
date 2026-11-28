@@ -2,6 +2,7 @@ name: review
 
 # Claude reviews a pull request once, when it is opened as ready or a draft is marked ready for review.
 # Later pushes are not reviewed again. Pull requests from forks are skipped by the action itself.
+# Dependabot's pull requests are skipped too: their workflows cannot read CLAUDE_CODE_OAUTH_TOKEN.
 on:
   pull_request:
     types: [opened, ready_for_review]
@@ -11,7 +12,7 @@ permissions:
 
 jobs:
   review:
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
