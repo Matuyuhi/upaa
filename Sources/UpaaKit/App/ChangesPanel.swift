@@ -20,22 +20,19 @@ final class ChangesPanel: NSView {
         var diff: [Substring]
     }
 
-    /// After each read: the number of changed files and the branch, both nil outside a git repository.
-    var onUpdate: ((_ count: Int?, _ branch: String?) -> Void)?
+    /// After each read: the branch, nil outside a git repository.
+    var onUpdate: ((_ branch: String?) -> Void)?
 
     private var state: State?
     private var selectedPath: String?
     private var reading = false
     private let rows = NSStackView()
-    private let openButton: Clickable
+    private let openButton = NSButton(title: "エディタで開く", target: nil, action: nil)
 
     /// Shows at most this many lines of a diff, so a huge file does not stall the window.
     private static let maxDiffLines = 400
 
     override init(frame: NSRect) {
-        openButton = Clickable(
-            cornerRadius: 15, selected: true, [Chrome.label("エディタで開く", size: 12)],
-            padding: NSEdgeInsets(top: 7, left: 14, bottom: 7, right: 14))
         super.init(frame: frame)
         rows.orientation = .vertical
         rows.alignment = .leading
@@ -56,7 +53,8 @@ final class ChangesPanel: NSView {
         document.topAnchor.constraint(equalTo: scroll.contentView.topAnchor).isActive = true
         document.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor).isActive = true
 
-        openButton.onClick = { [weak self] in self?.openInEditor() }
+        openButton.target = self
+        openButton.action = #selector(openInEditor)
         let stack = NSStackView(views: [scroll, openButton])
         stack.orientation = .vertical
         stack.spacing = 8
@@ -88,7 +86,7 @@ final class ChangesPanel: NSView {
     }
 
     private func apply(_ new: State?) {
-        onUpdate?(new?.files.count, new?.branch)
+        onUpdate?(new?.branch)
         guard new != state else { return }
         state = new
         show(new)
@@ -99,7 +97,7 @@ final class ChangesPanel: NSView {
         if let root = state?.root { refresh(directory: root) }
     }
 
-    private func openInEditor() {
+    @objc private func openInEditor() {
         guard let state, let path = state.selected else { return NSSound.beep() }
         NSWorkspace.shared.open(URL(fileURLWithPath: state.root).appendingPathComponent(path))
     }
@@ -113,8 +111,9 @@ final class ChangesPanel: NSView {
             add(Chrome.label("git のリポジトリではありません", size: 11, color: .secondaryLabelColor), inset: 6)
             return
         }
-        add(Chrome.label(state.files.isEmpty ? "変更はありません" : "変更されたファイル", size: 11, weight: .semibold,
-                         color: .secondaryLabelColor), inset: 6)
+        add(Chrome.label((["変更"] + [state.branch].compactMap { $0 }).joined(separator: " · "), size: 11,
+                         weight: .semibold, color: .secondaryLabelColor), inset: 6)
+        if state.files.isEmpty { add(Chrome.label("変更はありません", size: 12, color: .secondaryLabelColor), inset: 6, top: 6) }
         for file in state.files {
             let selected = file.path == state.selected
             var views: [NSView] = [Chrome.label(file.path, size: 12, weight: selected ? .medium : .regular, mono: true)]

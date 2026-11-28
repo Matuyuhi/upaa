@@ -92,7 +92,8 @@ public enum UpaaApp {
 
         let viewItem = NSMenuItem()
         viewItem.submenu = NSMenu(title: "View")
-        viewItem.submenu?.addItem(withTitle: "Tabs on the Side or Top", action: #selector(TabbedWindow.toggleTabLayout(_:)), keyEquivalent: "b")
+        // AppKit names the item Show or Hide Sidebar as the tab list is hidden or shown.
+        viewItem.submenu?.addItem(withTitle: "Show Sidebar", action: #selector(NSSplitViewController.toggleSidebar(_:)), keyEquivalent: "b")
         viewItem.submenu?.addItem(withTitle: "Changes Panel", action: #selector(TabbedWindow.toggleSidePanel(_:)), keyEquivalent: "j")
         mainMenu.addItem(viewItem)
 

@@ -1,22 +1,22 @@
 import AppKit
 
-/// Sizes and colors of the window's chrome, from the design's mockup (M5: tabs, splits and search).
+/// Sizes and colors of upaa's own views, from the design's mockup (M5: tabs, splits and search).
 enum Chrome {
-    static let inset: CGFloat = 8
-    static let headerHeight: CGFloat = 44
+    static let footerHeight: CGFloat = 26
+    /// The tab list's width when the window opens.
     static let tabPanelWidth: CGFloat = 224
+    /// The right panel's narrowest width.
     static let sidePanelWidth: CGFloat = 240
-    /// Horizontal tabs: the room left of the tabs for the traffic lights.
-    static let trafficLightsWidth: CGFloat = 78
     static let inactivePaneAlpha: CGFloat = 0.6
 
-    /// Selected tab, selected file, the branch and the main button. In light mode the glass comes out nearly white,
-    /// so the design's white pill is lost on it; a faint gray stands in.
+    /// The selected file. In light mode the panel's glass comes out nearly white, so the design's white pill is lost on
+    /// it; a faint gray stands in.
     static let pill = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.07) }
-    /// The tint of the glass panels. The design's white at 0.5 makes the light glass solid, so light mode takes less.
-    static let glass = NSColor(name: nil) {
-        $0.isDark ? NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.45) : NSColor(white: 1, alpha: 0.2)
-    }
+    /// A row under the pointer, and one held down, as AppKit's own buttons show them.
+    static let hover = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.08) : NSColor(white: 0, alpha: 0.04) }
+    static let pressed = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.2) : NSColor(white: 0, alpha: 0.11) }
+    /// How long a row's change of color takes.
+    static let animation: TimeInterval = 0.2
     static let addedLine = NSColor.systemGreen.withAlphaComponent(0.18)
     static let removedLine = NSColor.systemRed.withAlphaComponent(0.16)
 
@@ -56,56 +56,6 @@ extension NSView {
     }
 }
 
-/// A rounded panel of the system's glass: Liquid Glass on macOS 26 and later, a blurred material before.
-/// Put the panel's views in content.
-final class GlassPanel: NSView {
-    let content = NSView()
-
-    init(cornerRadius: CGFloat) {
-        super.init(frame: .zero)
-        let glass: NSView
-        if #available(macOS 26.0, *) {
-            let view = NSGlassEffectView()
-            view.cornerRadius = cornerRadius
-            view.contentView = content
-            glass = view
-        } else {
-            let view = NSVisualEffectView()
-            view.material = .popover
-            view.blendingMode = .withinWindow
-            view.state = .active
-            view.wantsLayer = true
-            view.layer?.cornerRadius = cornerRadius
-            view.layer?.masksToBounds = true
-            view.addSubview(content)
-            content.pin(to: view)
-            glass = view
-        }
-        addSubview(glass)
-        glass.pin(to: self)
-    }
-
-    /// The glass keeps the tint it is given as one fixed color, so it gets the tint for this view's light or dark mode
-    /// each time that changes. A tint set before the view is in a window resolved to light mode.
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        guard #available(macOS 26.0, *), let glass = subviews.first as? NSGlassEffectView else { return }
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.tintColor = NSColor(cgColor: Chrome.glass.cgColor)
-        }
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        viewDidChangeEffectiveAppearance()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not used")
-    }
-}
-
 /// A rounded rectangle of one color that follows light and dark mode.
 final class Fill: NSView {
     var color: NSColor {
@@ -128,20 +78,33 @@ final class Fill: NSView {
 
     override func updateLayer() {
         // Called with this view's appearance current, so the color resolves for light or dark mode.
-        layer?.backgroundColor = color.cgColor
+        // A change of color fades in; the layer of a view does not animate its own changes.
+        guard let layer else { return }
+        let new = color.cgColor
+        if let old = layer.presentation()?.backgroundColor ?? layer.backgroundColor, old != new {
+            let fade = CABasicAnimation(keyPath: "backgroundColor")
+            fade.fromValue = old
+            fade.duration = Chrome.animation
+            layer.add(fade, forKey: "color")
+        }
+        layer.backgroundColor = new
     }
 }
 
-/// A Fill that runs an action when clicked (tab items, file rows, toolbar buttons). On, it has the pill color and a
-/// faint shadow.
+/// A Fill that runs an action when clicked (the right panel's file rows). On, it has the pill color and a
+/// faint shadow. Under the pointer and held down it lightens and darkens, and lets go of the click as a button does:
+/// on release over it.
 final class Clickable: NSView {
     private let fill: Fill
     var onClick: (() -> Void)?
     var isOn: Bool {
-        didSet {
-            fill.color = isOn ? Chrome.pill : .clear
-            fill.layer?.shadowOpacity = isOn ? 0.12 : 0
-        }
+        didSet { show() }
+    }
+    private var hovered = false {
+        didSet { show() }
+    }
+    private var pressed = false {
+        didSet { show() }
     }
 
     init(cornerRadius: CGFloat, selected: Bool, _ views: [NSView], spacing: CGFloat = 0, vertical: Bool = false,
@@ -175,8 +138,30 @@ final class Clickable: NSView {
 
     override var mouseDownCanMoveWindow: Bool { false }
 
-    override func mouseDown(with event: NSEvent) {
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseDown(with event: NSEvent) { pressed = true }
+
+    override func mouseDragged(with event: NSEvent) {
+        pressed = bounds.contains(convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard pressed else { return }
+        pressed = false
         onClick?()
+    }
+
+    private func show() {
+        fill.color = pressed ? Chrome.pressed : isOn ? Chrome.pill : hovered ? Chrome.hover : .clear
+        fill.layer?.shadowOpacity = isOn && !pressed ? 0.12 : 0
     }
 }
 

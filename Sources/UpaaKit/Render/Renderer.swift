@@ -25,7 +25,7 @@ final class Renderer {
 
     /// Margin around the grid (points). The left, right, and bottom margins keep the text from being clipped by the window's rounded corners.
     /// The top margin is smaller because the title bar keeps the text away from the rounded corners.
-    private static let paddingPoints = (top: 2.0, bottom: 16.0, horizontal: 8.0)
+    static let paddingPoints = (top: 2.0, bottom: 16.0, horizontal: 8.0)
 
     private let handle: OpaquePointer
     private let backgroundPipeline: MTLRenderPipelineState
