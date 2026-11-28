@@ -82,9 +82,10 @@ jobs:
         run: |
           dir=build/screenshots
           mkdir -p "$dir/default/upaa" "$dir/config/upaa" "$dir/zsh"
-          # zsh's own startup files for the shots that start zsh (the runner's login shell is bash): none, so zsh does not
-          # ask to make them.
+          # zsh's own startup files for the shots that start zsh: none, so zsh does not ask to make them. upaa starts the
+          # account's login shell, bash on the runner, so those shots switch the account to zsh while they run.
           : > "$dir/zsh/.zshrc"
+          login="$(dscl . -read "/Users/$USER" UserShell | awk '{print $2}')"
           printf '%s\n' 'font-family = Menlo' 'font-family = Apple Color Emoji' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' \
             'cursor-style = bar' 'window-height = 2' > "$dir/config/upaa/config"
           # Prints the id of the window owned by the given process, to photograph that window alone.
@@ -114,7 +115,7 @@ jobs:
             # Cmd-W pressed, so the sheet asking whether to close the window shows over it, in English and in Japanese.
             conf="$name"
             lang=en
-            shell="$SHELL"
+            shell="$login"
             case "$name" in close*) shell=/bin/zsh ;; esac
             case "$name" in top | reopen | find | changes | close) conf=default ;; esac
             if [ "$name" = ja ] || [ "$name" = close-ja ]; then conf=default; lang=ja; fi
@@ -124,9 +125,11 @@ jobs:
             fi
             # Each launch starts at the config's size, not where the last one left its window.
             defaults delete local.upaa 2>/dev/null || true
+            sudo dscl . -create "/Users/$USER" UserShell "$shell"
             SHELL="$shell" ZDOTDIR="$PWD/$dir/zsh" XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa -AppleLanguages "($lang)" &
             pid=$!
             sleep 5
+            sudo dscl . -create "/Users/$USER" UserShell "$login"
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
             if [ "$name" = top ]; then
               osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
@@ -190,20 +193,24 @@ jobs:
 
       # Cmd-W on the last pane closes the window without asking when it would end nothing: in zsh with only a job it
       # disowned, as themes start their daemons (powerlevel10k's gitstatusd), and in an idle bash. Fails if the window
-      # stays, and keeps a picture of it.
+      # stays, and keeps a picture of it, or if zsh did not start the job.
       - name: Close without asking
         env:
           UPAA_NO_UPDATE_CHECK: "1"
         run: |
           dir=build/screenshots
+          login="$(dscl . -read "/Users/$USER" UserShell | awk '{print $2}')"
           failed=
           for shell in zsh bash; do
             typed=
             [ "$shell" = bash ] || typed='sleep 600 &!'
+            pkill -x sleep || true
             defaults delete local.upaa 2>/dev/null || true
+            sudo dscl . -create "/Users/$USER" UserShell "/bin/$shell"
             SHELL="/bin/$shell" ZDOTDIR="$PWD/$dir/zsh" XDG_CONFIG_HOME="$PWD/$dir/default" build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
             pid=$!
             sleep 5
+            sudo dscl . -create "/Users/$USER" UserShell "$login"
             osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
               -e "tell application \"System Events\" to keystroke \"$typed\"" \
               -e 'tell application "System Events" to key code 36' \
@@ -218,6 +225,8 @@ jobs:
             else
               echo "the window closed without asking ($shell)"
             fi
+            # The disowned job outlives the window.
+            if [ -n "$typed" ] && ! pkill -x sleep; then echo "zsh did not start the job"; failed=1; fi
             kill "$pid" 2>/dev/null || true
             wait "$pid" || true
           done
