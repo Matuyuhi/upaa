@@ -83,7 +83,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.setContentSize(NSSize(
-            width: terminalSize.width + 2 * Chrome.inset + Chrome.tabPanelWidth,
+            width: terminalSize.width + 2 * Chrome.inset + Chrome.tabPanelWidth + Self.textInset,
             height: terminalSize.height + Chrome.headerTop + Chrome.headerHeight + Chrome.footerHeight + Chrome.inset))
         let card = Fill(background)
         ground.addSubview(card)
@@ -468,6 +468,9 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         return place.hasPrefix(home) ? "~" + place.dropFirst(home.count) : place
     }
 
+    /// The terminal's text, the title and the footer start on one line, 12 pt from the tab panel as in the design.
+    private static let textInset = 12 - Renderer.paddingPoints.horizontal
+
     private func arrange(sidePanel shown: Bool) {
         // Showing or hiding the right panel is animated, as Xcode's inspector is; moving the tabs is not.
         let animated = window.isVisible && arranged?.0 == vertical
@@ -489,8 +492,6 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
             host.topAnchor.constraint(equalTo: ground.topAnchor, constant: hostTop),
         ]
         if vertical {
-            // The terminal's text, the title and the footer start at one line, 12 pt from the tab panel as in the design.
-            let textInset = 12 - Renderer.paddingPoints.horizontal
             layout += [
                 tabPanel.leadingAnchor.constraint(equalTo: ground.leadingAnchor, constant: inset),
                 tabPanel.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
@@ -498,7 +499,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
                 tabPanel.widthAnchor.constraint(equalToConstant: Chrome.tabPanelWidth),
                 header.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
                 header.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -inset - 6),
-                host.leadingAnchor.constraint(equalTo: tabPanel.trailingAnchor, constant: textInset),
+                host.leadingAnchor.constraint(equalTo: tabPanel.trailingAnchor, constant: Self.textInset),
                 host.bottomAnchor.constraint(equalTo: footer.topAnchor),
                 host.trailingAnchor.constraint(equalTo: shown ? sidePanel.leadingAnchor : ground.trailingAnchor, constant: -inset),
                 footer.leadingAnchor.constraint(equalTo: header.leadingAnchor),
