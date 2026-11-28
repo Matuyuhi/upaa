@@ -38,8 +38,6 @@ Works today:
 - A links panel with the web addresses the current tab printed, GitHub and Notion first, to open with a click (Shift-Cmd-J)
 - Split panes (Cmd-D to the right, Cmd-Shift-D below, Cmd-[ and Cmd-] to move, Cmd-W to close); a new pane or tab starts in the current shell's directory
 
-Not yet: search, and the list of links a session printed.
-
 ## Install
 
 ```sh
