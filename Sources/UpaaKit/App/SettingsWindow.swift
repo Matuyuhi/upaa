@@ -15,7 +15,7 @@ final class SettingsWindow: NSWindowController {
         moreFallbacks = Array(families.dropFirst(2))
         self.onChange = onChange
         let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: true)
-        window.title = "Settings"
+        window.title = "設定"
         window.isReleasedWhenClosed = false
         super.init(window: window)
 
@@ -32,7 +32,7 @@ final class SettingsWindow: NSWindowController {
             }
         }
         Self.select(families.first, in: fontButton)
-        fallbackButton.addItem(withTitle: "None")
+        fallbackButton.addItem(withTitle: "なし")
         fallbackButton.menu?.addItem(.separator())
         fallbackButton.addItems(withTitles: manager.availableFontFamilies)
         if families.count > 1 { Self.select(families[1], in: fallbackButton) }
@@ -55,17 +55,17 @@ final class SettingsWindow: NSWindowController {
         }
 
         let note = NSTextField(wrappingLabelWithString:
-            "The fallback draws characters the font lacks, such as Nerd Font icons. Saved to "
-                + (Config.fileURL.path as NSString).abbreviatingWithTildeInPath + ".")
+            "フォントにない文字（Nerd Font のアイコンなど）はフォールバックで描きます。保存先: "
+                + (Config.fileURL.path as NSString).abbreviatingWithTildeInPath)
         note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         note.textColor = .secondaryLabelColor
         note.preferredMaxLayoutWidth = 260
         let size = NSStackView(views: [sizeField, sizeStepper, NSTextField(labelWithString: "pt")])
         size.spacing = 4
         let grid = NSGridView(views: [
-            [NSTextField(labelWithString: "Font:"), fontButton],
-            [NSTextField(labelWithString: "Size:"), size],
-            [NSTextField(labelWithString: "Fallback:"), fallbackButton],
+            [NSTextField(labelWithString: "フォント:"), fontButton],
+            [NSTextField(labelWithString: "サイズ:"), size],
+            [NSTextField(labelWithString: "フォールバック:"), fallbackButton],
             [NSGridCell.emptyContentView, note],
         ])
         grid.rowAlignment = .firstBaseline
@@ -87,6 +87,8 @@ final class SettingsWindow: NSWindowController {
             sizeField.widthAnchor.constraint(equalToConstant: 48),
         ])
         window.contentView = content
+        // Not the size field, which would open with its text selected.
+        window.initialFirstResponder = fontButton
         window.setContentSize(content.fittingSize)
         window.center()
     }
