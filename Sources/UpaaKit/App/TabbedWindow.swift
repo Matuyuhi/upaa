@@ -3,10 +3,11 @@ import AppKit
 /// One window with tabs, laid out as design M5 on AppKit's own window parts. A tab is one terminal, or split views with
 /// terminals (panes) at their ends. Each pane has its own shell, and a tab is named after the title its focused pane's
 /// program set.
-/// A split view controller holds the tab list as its sidebar (Cmd-B hides it), the selected tab in the middle with a
+/// A split view controller holds the tab list as its sidebar, the selected tab in the middle with a
 /// footer under it (the shell, the focused pane's size and the main keys), and the changed files of the focused pane's
 /// git repository as the right panel (Cmd-J). The toolbar holds the split buttons and the right panel's, and shows the
-/// tab's name with its directory and branch. Where the traffic lights, the glass, the toolbar and the panels go, and
+/// tab's name with its directory and branch. Cmd-B hides the tab list, and the tabs move into the toolbar, in place of
+/// the title (design A3, tabs along the top). Where the traffic lights, the glass, the toolbar and the panels go, and
 /// how they move, is AppKit's. Behind them all is one card of the terminal's background color, translucent over a
 /// color gradient; the terminal draws no background of its own and runs up under the toolbar, its text below it.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
@@ -38,6 +39,10 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The tab list, the selected tab and the right panel, side by side.
     private let columns = NSSplitViewController()
     private let tabList: TabList
+    /// The tabs in the toolbar while the tab list is hidden.
+    private let tabStrip = TabStrip()
+    /// The host's left and right edges, moved in from the window's edges while the tabs are along the top.
+    private var hostEdges: [NSLayoutConstraint] = []
     /// Holds the selected tab's view.
     private let host = Host()
     private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
@@ -78,12 +83,34 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         panel.maximumThickness = 480
         panel.isCollapsed = true
         columns.splitViewItems = [sidebar, NSSplitViewItem(viewController: terminalArea()), panel]
+        tabStrip.onSelect = { [weak self] index in
+            guard let self, index != self.selected else { return }
+            self.select(index)
+        }
+        tabStrip.onClose = { [weak self] index in
+            guard let self else { return }
+            let tab = self.tabs[index]
+            self.ask("このタブを閉じますか？", about: tab.panes) { [weak self] in
+                if let self, let index = self.tabs.firstIndex(where: { $0 === tab }) { self.closeTab(at: index) }
+            }
+        }
+        tabStrip.onMove = { [weak self] in self?.moveTab(from: $0, to: $1) }
+        tabList.onClose = tabStrip.onClose
+        tabList.onMove = tabStrip.onMove
+        NotificationCenter.default.addObserver(self, selector: #selector(placeTabs(_:)),
+                                               name: NSSplitView.didResizeSubviewsNotification, object: columns.splitView)
         tabList.onSelect = { [weak self] index in
             guard let self, index != self.selected else { return }
             self.select(index)
         }
-        changes.onUpdate = { [weak self] branch in
-            guard let self, branch != self.branch else { return }
+        changes.onUpdate = { [weak self] branch, count in
+            guard let self else { return }
+            // A mark on the right panel's button that the focused pane's repository has changes (macOS 26 and later).
+            if #available(macOS 26.0, *) {
+                let item = self.window.toolbar?.items.first { $0.itemIdentifier == Self.panelButton }
+                item?.badge = count > 0 ? .count(count) : nil
+            }
+            guard branch != self.branch else { return }
             self.branch = branch
             self.refresh()
         }
@@ -105,12 +132,53 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
             height: terminalSize.height + toolbarHeight + Chrome.footerHeight))
         root.view.layoutSubtreeIfNeeded()
         columns.splitView.setPosition(Chrome.tabPanelWidth, ofDividerAt: 0)
+        windowDidResize(Notification(name: NSWindow.didResizeNotification))
 
         watch(first)
         tabs.append(Tab(first))
         select(0)
         // The tab list follows the shells' directories, and the panel the files, without a signal from either.
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.readChanges() }
+    }
+
+    /// The tabs along the top get the window's width less what the traffic lights and the buttons beside them take.
+    func windowDidResize(_ notification: Notification) {
+        tabStrip.room = max(0, window.frame.width - 300)
+    }
+
+    /// The window's close button and Cmd-Shift-W ask first while a program runs in one of its panes.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard running.isEmpty else {
+            ask("このウィンドウを閉じますか？", about: tabs.flatMap(\.panes)) { [weak self] in self?.window.close() }
+            return false
+        }
+        return true
+    }
+
+    /// The programs running in the panes, other than their shells.
+    var running: [String] { tabs.flatMap(\.panes).compactMap(\.session.running) }
+
+    /// Does then at once when no pane among panes runs a program other than its shell; otherwise asks first, in a
+    /// sheet, as Terminal does, since closing ends those programs.
+    private func ask(_ question: String, about panes: [TerminalView], then: @escaping () -> Void) {
+        let running = panes.compactMap(\.session.running)
+        guard !running.isEmpty else { return then() }
+        Self.alert(question, button: "閉じる", running: running).beginSheetModal(for: window) {
+            if $0 == .alertFirstButtonReturn { then() }
+        }
+    }
+
+    /// Asks whether to end the programs named, with the button that does it and Cancel.
+    static func alert(_ question: String, button: String, running: [String]) -> NSAlert {
+        let names = running.filter { !$0.isEmpty }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        let alert = NSAlert()
+        alert.messageText = question
+        alert.informativeText = names.isEmpty
+            ? "実行中のプログラムがあります。閉じると終了します。"
+            : "\(names.joined(separator: "、")) が実行中です。閉じると終了します。"
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "キャンセル")
+        return alert
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -137,13 +205,13 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
             subview.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(subview)
         }
-        NSLayoutConstraint.activate([
+        hostEdges = [host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                     view.trailingAnchor.constraint(equalTo: host.trailingAnchor)]
+        NSLayoutConstraint.activate(hostEdges + [
             host.topAnchor.constraint(equalTo: view.topAnchor),
-            host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             host.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
-            footer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Renderer.paddingPoints.horizontal),
+            footer.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
+            footer.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -Renderer.paddingPoints.horizontal),
             footer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             footer.heightAnchor.constraint(equalToConstant: Chrome.footerHeight),
         ])
@@ -171,6 +239,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     // MARK: Toolbar
 
     private static let tabsEdge = NSToolbarItem.Identifier("tabsEdge")
+    private static let tabsItem = NSToolbarItem.Identifier("tabs")
+    private static let newTabButton = NSToolbarItem.Identifier("newTab")
     private static let splitRight = NSToolbarItem.Identifier("splitRight")
     private static let splitDown = NSToolbarItem.Identifier("splitDown")
     private static let panelEdge = NSToolbarItem.Identifier("panelEdge")
@@ -181,7 +251,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        toolbarDefaultItemIdentifiers(toolbar) + [Self.tabsItem, Self.newTabButton]
     }
 
     /// The two edges follow the dividers, so the title starts at the tab list's edge and the panel button sits over
@@ -194,6 +264,12 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         case Self.splitRight: return button(identifier, "rectangle.split.2x1", "縦に分割 (⌘D)", #selector(splitRight(_:)))
         case Self.splitDown: return button(identifier, "rectangle.split.1x2", "横に分割 (⇧⌘D)", #selector(splitDown(_:)))
         case Self.panelButton: return button(identifier, "sidebar.right", "右パネル (⌘J)", #selector(toggleSidePanel(_:)))
+        case Self.newTabButton: return button(identifier, "plus", "新しいタブ (⌘T)", #selector(newTab(_:)))
+        case Self.tabsItem:
+            let item = NSToolbarItem(itemIdentifier: identifier)
+            item.view = tabStrip
+            item.label = "タブ"
+            return item
         default: return nil
         }
     }
@@ -211,6 +287,38 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         return item
     }
 
+    /// With the tab list hidden (Cmd-B, or its divider dragged to the edge), the tabs and the new tab button go into
+    /// the toolbar beside the traffic lights, in place of the window's title, the tabs widening from nothing; shown
+    /// again, they fade out and go back.
+    @objc private func placeTabs(_ notification: Notification) {
+        guard let toolbar = window.toolbar else { return }
+        let top = columns.splitViewItems[0].isCollapsed
+        let shown = toolbar.items.contains { $0.itemIdentifier == Self.tabsItem }
+        if top, !shown {
+            toolbar.insertItem(withItemIdentifier: Self.newTabButton, at: 1)
+            toolbar.insertItem(withItemIdentifier: Self.tabsItem, at: 1)
+            window.titleVisibility = .hidden
+        } else if top, tabStrip.alphaValue < 1 {
+            // The tab list was hidden again while the tabs faded out.
+            tabStrip.animator().alphaValue = 1
+        } else if !top, shown, tabStrip.alphaValue == 1 {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = Chrome.animation
+                self.tabStrip.animator().alphaValue = 0
+            }) { [weak self] in
+                guard let self, !self.columns.splitViewItems[0].isCollapsed else { return }
+                for identifier in [Self.tabsItem, Self.newTabButton] {
+                    if let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == identifier }) { toolbar.removeItem(at: index) }
+                }
+                self.tabStrip.alphaValue = 1
+                self.window.titleVisibility = .visible
+            }
+        }
+        // Design A3 puts the text 18 from the window's edges with the tabs along the top; the terminal keeps 8 itself.
+        let edge: CGFloat = top ? 10 : 0
+        if hostEdges[0].constant != edge { hostEdges.forEach { $0.animator().constant = edge } }
+    }
+
     // MARK: Menu actions
 
     /// Opens a tab to the right of the selected one, in the focused pane's directory.
@@ -221,9 +329,10 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         select(selected + 1)
     }
 
-    /// Closes the focused pane, and the tab with its last pane.
+    /// Closes the focused pane, and the tab with its last pane, asking first while it runs a program.
     @objc func closePane(_ sender: Any?) {
-        close(tabs[selected].focus)
+        let pane = tabs[selected].focus
+        ask("このペインを閉じますか？", about: [pane]) { [weak self] in self?.close(pane) }
     }
 
     /// Puts a new pane to the right of the focused one.
@@ -365,6 +474,14 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         select(index < selected || selected == tabs.count ? selected - 1 : selected)
     }
 
+    /// A tab dragged to another place, in the tab list or along the top.
+    private func moveTab(from: Int, to: Int) {
+        let current = tabs[selected]
+        tabs.insert(tabs.remove(at: from), at: to)
+        selected = tabs.firstIndex { $0 === current }!
+        refresh()
+    }
+
     private func select(_ index: Int) {
         let tab = tabs[index]
         if tab.top.superview == nil { show(tab) }
@@ -397,7 +514,9 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         let tab = tabs[selected]
         window.title = tab.focus.session.title ?? "upaa"
         window.subtitle = [place(of: tab), branch ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
-        tabList.show(tabs.map { (title: $0.focus.session.title ?? "upaa", place: place(of: $0)) }, selected: selected)
+        let titles = tabs.map { $0.focus.session.title ?? "upaa" }
+        tabList.show(zip(titles, tabs).map { (title: $0, place: place(of: $1)) }, selected: selected)
+        tabStrip.show(zip(tabs, titles).map { (id: ObjectIdentifier($0), title: $1) }, selected: selected)
 
         // A split or a closed pane can change which panes are along the top.
         host.needsLayout = true

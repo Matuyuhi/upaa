@@ -119,6 +119,7 @@ jobs:
     needs: release
     permissions:
       contents: write
+      actions: write
     uses: ./.github/workflows/bump-version.yml
     with:
       part: patch

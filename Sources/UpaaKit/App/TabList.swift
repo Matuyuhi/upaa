@@ -1,14 +1,18 @@
 import AppKit
 
 /// The window's sidebar: a source list of the tabs, each with its name and the directory of its focused pane, under
-/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own. AppKit's sidebar
+/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own. A row shows a close
+/// button while the pointer is on it, the middle button closes it too, and a row can be dragged to another place, as
+/// the tabs along the top can. AppKit's sidebar
 /// glass shows what is behind the window, not upaa's gradient, so the sidebar lays the window's ground (the gradient
 /// and the card, lined up with the window's) under a pane of the design's glass color.
 final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// A row was picked by the user.
     var onSelect: ((Int) -> Void)?
+    var onClose: ((Int) -> Void)?
+    var onMove: ((_ from: Int, _ to: Int) -> Void)?
     private var items: [(title: String, place: String)] = []
-    private let table = NSTableView()
+    private let table = Table()
     /// Set while the rows are being replaced, so that the new selection is not taken as the user's.
     private var reloading = false
     private let ground = Backdrop(frame: .zero)
@@ -37,6 +41,15 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         table.refusesFirstResponder = true
         table.dataSource = self
         table.delegate = self
+        // The selection follows the moved row, which is not the user picking another tab.
+        table.onMove = { [weak self] from, to in
+            guard let self else { return }
+            self.items.insert(self.items.remove(at: from), at: to)
+            self.reloading = true
+            self.table.moveRow(at: from, to: to)
+            self.reloading = false
+        }
+        table.onMoved = { [weak self] from, to in self?.onMove?(from, to) }
     }
 
     @available(*, unavailable)
@@ -95,9 +108,12 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
     }
 
     func show(_ items: [(title: String, place: String)], selected: Int) {
-        self.items = items
         reloading = true
-        table.reloadData()
+        // Rows rebuilt under the pointer would lose its hover, so only a change of names or places rebuilds them.
+        if items.map({ [$0.title, $0.place] }) != self.items.map({ [$0.title, $0.place] }) {
+            self.items = items
+            table.reloadData()
+        }
         table.selectRowIndexes(IndexSet(integer: selected), byExtendingSelection: false)
         reloading = false
     }
@@ -112,13 +128,18 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 1
-        let cell = NSTableCellView()
+        let cell = Row()
         cell.textField = title
+        cell.onClose = { [weak self, weak cell] in
+            guard let self, let cell else { return }
+            let row = self.table.row(for: cell)
+            if row >= 0 { self.onClose?(row) }
+        }
         cell.addSubview(stack)
         stack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -4),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: cell.close.leadingAnchor, constant: -4),
             stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
@@ -128,4 +149,91 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         guard !reloading, table.selectedRow >= 0 else { return }
         onSelect?(table.selectedRow)
     }
+}
+
+/// The tab list's table, which moves a row held down and dragged among the others as the pointer goes: the held row
+/// takes the place under the pointer, and the table animates the others out of its way. A click selects the row at
+/// once, as the table's own does. AppKit's own row dragging is not used: its picture of the row jumped away from the
+/// pointer as the drag started.
+private final class Table: NSTableView {
+    /// The held row has moved one place; the table and its rows are to follow.
+    var onMove: ((_ from: Int, _ to: Int) -> Void)?
+    /// The pointer let go of a row that was dragged from one place to another.
+    var onMoved: ((_ from: Int, _ to: Int) -> Void)?
+    private var held: (from: Int, row: Int, start: CGFloat, moved: Bool)?
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        guard row >= 0 else { return super.mouseDown(with: event) }
+        selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        held = (row, row, point.y, false)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard var hold = held else { return }
+        let y = convert(event.locationInWindow, from: nil).y
+        guard hold.moved || abs(y - hold.start) > 4 else { return }
+        hold.moved = true
+        // Above the first row or below the last, the row goes to that end; between two rows, it stays.
+        let last = numberOfRows - 1
+        let under = y < 0 ? 0 : y >= rect(ofRow: last).maxY ? last : row(at: NSPoint(x: bounds.midX, y: y))
+        // The table's own row animation is longer, and lagged behind the pointer; this is the one the tabs along the
+        // top slide with.
+        if under >= 0, under != hold.row {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Chrome.animation
+                onMove?(hold.row, under)
+            }
+            hold.row = under
+        }
+        held = hold
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let hold = held else { return super.mouseUp(with: event) }
+        held = nil
+        if hold.row != hold.from { onMoved?(hold.from, hold.row) }
+    }
+}
+
+/// A tab's row, with a close button at its right while the pointer is on it.
+private final class Row: NSTableCellView {
+    let close = NSButton()
+    var onClose: (() -> Void)?
+
+    init() {
+        super.init(frame: .zero)
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "閉じる")?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+        close.isBordered = false
+        close.isHidden = true
+        close.contentTintColor = .secondaryLabelColor
+        close.toolTip = "タブを閉じる"
+        close.target = self
+        close.action = #selector(closeTab)
+        close.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(close)
+        NSLayoutConstraint.activate([
+            close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            close.centerYAnchor.constraint(equalTo: centerYAnchor),
+            close.widthAnchor.constraint(equalToConstant: 16),
+            close.heightAnchor.constraint(equalToConstant: 16),
+        ])
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func mouseEntered(with event: NSEvent) { close.isHidden = false }
+
+    override func mouseExited(with event: NSEvent) { close.isHidden = true }
+
+    override func otherMouseUp(with event: NSEvent) { onClose?() }
+
+    @objc private func closeTab() { onClose?() }
 }

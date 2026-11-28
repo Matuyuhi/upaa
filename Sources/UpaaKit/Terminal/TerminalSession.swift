@@ -137,6 +137,14 @@ final class TerminalSession {
         return n > 0 ? String(decoding: out.prefix(n), as: UTF8.self) : nil
     }
 
+    /// The program the shell is running in the foreground (such as vim or claude), "" if its name cannot be read, or nil
+    /// while the shell itself waits for input.
+    var running: String? {
+        var out = [UInt8](repeating: 0, count: 256)
+        let n = upaa_session_running(handle, &out, out.count)
+        return n < 0 ? nil : String(decoding: out.prefix(n), as: UTF8.self)
+    }
+
     /// The title the program set (OSC 0 or 2), or nil if it set none.
     var title: String? {
         var out = [UInt8](repeating: 0, count: 1024)

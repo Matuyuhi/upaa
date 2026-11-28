@@ -1,6 +1,9 @@
 name: bump-version
 
 # Bumps .version in build.zig.zon and commits it to main. Nothing else changes.
+# main takes only commits that test.yml's lockfile and test checks passed on (the "main PR" ruleset), and a push with
+# the workflow's own token starts no workflow, so the commit goes to a branch first, test.yml is run on it by hand
+# (which that token may do), and main moves to it once both checks pass.
 # release.yml calls this after each release with part=patch, so main always holds the next version.
 # Run it by hand (gh workflow run bump-version.yml -f part=minor) to move to a new minor or major version.
 on:
@@ -23,9 +26,10 @@ permissions:
 jobs:
   bump:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 45
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -34,6 +38,7 @@ jobs:
       - name: Bump the version in build.zig.zon
         env:
           PART: ${{ inputs.part }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           current="$(sed -n 's/.*\.version = "\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' build.zig.zon)"
           [ -n "$current" ] || { echo "Cannot read the version from build.zig.zon"; exit 1; }
@@ -50,5 +55,19 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Bump version to $next" build.zig.zon
+          branch="bump-version/$next"
+          git push origin "HEAD:refs/heads/$branch"
+          trap 'git push origin --delete "$branch"' EXIT
+          gh workflow run test.yml --ref "$branch"
+          sha="$(git rev-parse HEAD)"
+          for check in lockfile test; do
+            while :; do
+              result="$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?check_name=$check" \
+                --jq '.check_runs[0] | select(.status == "completed") | .conclusion' || true)"
+              [ -n "$result" ] && break
+              sleep 30
+            done
+            [ "$result" = success ] || { echo "$check: $result"; exit 1; }
+          done
           git push origin HEAD:main
           echo "$current -> $next"

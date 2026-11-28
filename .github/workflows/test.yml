@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # bump-version.yml runs it on its version commit, which must pass before it goes to main.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -89,17 +91,28 @@ jobs:
               print(id)
           }
           SWIFT
-          for name in default config dark; do
+          for name in default config top dark; do
+            # top: no config file, with the tab list hidden (Cmd-B), so the tabs are in the toolbar, and a second tab opened there (Cmd-T).
             # dark: no config file, with the runner switched to dark mode.
             conf="$name"
+            [ "$name" = top ] && conf=default
             if [ "$name" = dark ]; then
               conf=default
               osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
             fi
+            # Each launch starts at the config's size, not where the last one left its window.
+            defaults delete local.upaa 2>/dev/null || true
             XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa &
             pid=$!
             sleep 5
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
+            if [ "$name" = top ]; then
+              osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
+                -e 'tell application "System Events" to keystroke "b" using command down' \
+                -e 'delay 1' \
+                -e 'tell application "System Events" to keystroke "t" using command down' || echo "could not press Cmd-B, Cmd-T"
+              sleep 2
+            fi
             id="$(swift "$dir/window.swift" "$pid")"
             [ -n "$id" ] || { echo "upaa opened no window ($name)"; exit 1; }
             screencapture -x -o -l "$id" "$dir/$name.png"
@@ -186,6 +199,7 @@ jobs:
           printf '%s\n' "Launch screenshots for $SHA" '' \
             "Without a config file: ![default]($url/default.png)" '' \
             "With a config file: ![config]($url/config.png)" '' \
+            "Tabs along the top (Cmd-B): ![top]($url/top.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" > ../comment.md
           if [ -f ../shots/settings.png ]; then printf '\n%s\n' "Settings (Cmd-,): ![settings]($url/settings.png)" >> ../comment.md; fi
           if [ -f ../shots/settings-reload.png ]; then printf '\n%s\n' "Settings after font-size = 20 is added to the file: ![settings-reload]($url/settings-reload.png)" >> ../comment.md; fi

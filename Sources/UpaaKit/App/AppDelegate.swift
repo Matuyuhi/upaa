@@ -26,9 +26,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         watchConfig()
         UpdateCheck.run { [weak terminal] message in terminal?.showNote(message) }
-        window.center()
+        // The first window opens where it was last left, at the size it was left; the config's size is for the first
+        // launch and for new windows.
+        window.setFrameAutosaveName("upaa")
+        if !window.setFrameUsingName("upaa") { window.center() }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Cmd-Q asks first while a program runs in one of the panes.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let running = windows.flatMap(\.running)
+        guard !running.isEmpty else { return .terminateNow }
+        let alert = TabbedWindow.alert("upaaを終了しますか？", button: "終了", running: running)
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
