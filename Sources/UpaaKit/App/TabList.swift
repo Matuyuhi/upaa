@@ -12,7 +12,7 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
     var onClose: ((Int) -> Void)?
     var onMove: ((_ from: Int, _ to: Int) -> Void)?
     private var items: [(title: String, place: String)] = []
-    private let table = NSTableView()
+    private let table = Table()
     /// Set while the rows are being replaced, so that the new selection is not taken as the user's.
     private var reloading = false
     private let ground = Backdrop(frame: .zero)
@@ -41,8 +41,15 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         table.refusesFirstResponder = true
         table.dataSource = self
         table.delegate = self
-        table.registerForDraggedTypes([Self.row])
-        table.draggingDestinationFeedbackStyle = .gap
+        // The selection follows the moved row, which is not the user picking another tab.
+        table.onMove = { [weak self] from, to in
+            guard let self else { return }
+            self.items.insert(self.items.remove(at: from), at: to)
+            self.reloading = true
+            self.table.moveRow(at: from, to: to)
+            self.reloading = false
+        }
+        table.onMoved = { [weak self] from, to in self?.onMove?(from, to) }
     }
 
     @available(*, unavailable)
@@ -138,57 +145,50 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         return cell
     }
 
-    // MARK: Dragging a row
-
-    private static let row = NSPasteboard.PasteboardType("local.upaa.tab")
-
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        let item = NSPasteboardItem()
-        item.setString(String(row), forType: Self.row)
-        return item
-    }
-
-    /// The row is dragged as it shows, from where it is: its whole row view, placed by its frame in the table. The
-    /// picture AppKit makes on its own is built from the cell's textField, which here sits in a stack, and it jumped
-    /// up away from the pointer as the drag started.
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint,
-                   forRowIndexes rowIndexes: IndexSet) {
-        guard let row = rowIndexes.first, let view = tableView.rowView(atRow: row, makeIfNecessary: false),
-              let picture = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: picture)
-        let image = NSImage(size: view.bounds.size)
-        image.addRepresentation(picture)
-        session.enumerateDraggingItems(options: [], for: tableView, classes: [NSPasteboardItem.self],
-                                       searchOptions: [:]) { item, _, _ in
-            item.setDraggingFrame(view.frame, contents: image)
-        }
-    }
-
-    /// A drop just above or just below the dragged row would leave it where it is, so it is refused: the gap that
-    /// shows a drop would otherwise open beside the row as soon as the drag starts, and the row would look as if it
-    /// had jumped.
-    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
-                   proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-        guard info.draggingSource as? NSTableView === table, let from = dragged(info), row != from, row != from + 1
-        else { return [] }
-        tableView.setDropRow(row, dropOperation: .above)
-        return .move
-    }
-
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
-                   dropOperation: NSTableView.DropOperation) -> Bool {
-        guard let from = dragged(info) else { return false }
-        onMove?(from, from < row ? row - 1 : row)
-        return true
-    }
-
-    private func dragged(_ info: NSDraggingInfo) -> Int? {
-        info.draggingPasteboard.string(forType: Self.row).flatMap(Int.init)
-    }
-
     func tableViewSelectionDidChange(_ notification: Notification) {
         guard !reloading, table.selectedRow >= 0 else { return }
         onSelect?(table.selectedRow)
+    }
+}
+
+/// The tab list's table, which moves a row held down and dragged among the others as the pointer goes: the held row
+/// takes the place under the pointer, and the table animates the others out of its way. A click selects the row at
+/// once, as the table's own does. AppKit's own row dragging is not used: its picture of the row jumped away from the
+/// pointer as the drag started.
+private final class Table: NSTableView {
+    /// The held row has moved one place; the table and its rows are to follow.
+    var onMove: ((_ from: Int, _ to: Int) -> Void)?
+    /// The pointer let go of a row that was dragged from one place to another.
+    var onMoved: ((_ from: Int, _ to: Int) -> Void)?
+    private var held: (from: Int, row: Int, start: CGFloat, moved: Bool)?
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let row = row(at: point)
+        guard row >= 0 else { return super.mouseDown(with: event) }
+        selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        held = (row, row, point.y, false)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard var hold = held else { return }
+        let y = convert(event.locationInWindow, from: nil).y
+        guard hold.moved || abs(y - hold.start) > 4 else { return }
+        hold.moved = true
+        // Above the first row or below the last, the row goes to that end; between two rows, it stays.
+        let last = numberOfRows - 1
+        let under = y < 0 ? 0 : y >= rect(ofRow: last).maxY ? last : row(at: NSPoint(x: bounds.midX, y: y))
+        if under >= 0, under != hold.row {
+            onMove?(hold.row, under)
+            hold.row = under
+        }
+        held = hold
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let hold = held else { return super.mouseUp(with: event) }
+        held = nil
+        if hold.row != hold.from { onMoved?(hold.from, hold.row) }
     }
 }
 
