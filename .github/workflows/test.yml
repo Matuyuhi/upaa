@@ -79,7 +79,7 @@ jobs:
         run: |
           dir=build/screenshots
           mkdir -p "$dir/default/upaa" "$dir/config/upaa"
-          printf '%s\n' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' > "$dir/config/upaa/config"
+          printf '%s\n' 'font-family = Menlo' 'font-family = Apple Color Emoji' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' > "$dir/config/upaa/config"
           # Prints the id of the window owned by the given process, to photograph that window alone.
           cat > "$dir/window.swift" <<'SWIFT'
           import CoreGraphics
@@ -107,6 +107,24 @@ jobs:
             kill "$pid"
             wait "$pid" || true
           done
+
+      # The Settings window (Cmd-,), alone, with the config file above. Pressing keys needs the runner to allow it,
+      # so a missing picture does not fail here.
+      - name: Settings screenshot
+        env:
+          UPAA_NO_UPDATE_CHECK: "1"
+        run: |
+          dir=build/screenshots
+          XDG_CONFIG_HOME="$PWD/$dir/config" build/upaa.app/Contents/MacOS/upaa &
+          pid=$!
+          sleep 5
+          osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
+            -e 'tell application "System Events" to keystroke "," using command down' || echo "could not press Cmd-,"
+          sleep 2
+          id="$(swift "$dir/window.swift" "$pid")"
+          [ -z "$id" ] || screencapture -x -o -l "$id" "$dir/settings.png"
+          kill "$pid"
+          wait "$pid" || true
 
       - name: Keep the launch screenshots
         if: always()
@@ -165,4 +183,5 @@ jobs:
             "Without a config file: ![default]($url/default.png)" '' \
             "With a config file: ![config]($url/config.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" > ../comment.md
+          if [ -f ../shots/settings.png ]; then printf '\n%s\n' "Settings (Cmd-,): ![settings]($url/settings.png)" >> ../comment.md; fi
           gh pr comment "$PR" --edit-last --create-if-none --body-file ../comment.md

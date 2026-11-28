@@ -2,12 +2,15 @@ import AppKit
 import Metal
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let config = Config.load()
+    private var config = Config.load()
     private lazy var fontFamily = config.fontFamily
     /// A config problem not shown yet. The next terminal to open shows it.
     private lazy var problem = config.problem
     /// AppKit does not keep a window alive by itself, so open windows are held here until they close.
     private var windows: [TabbedWindow] = []
+    /// Every open terminal, for a change of font.
+    private let terminals = NSHashTable<TerminalView>.weakObjects()
+    private var settings: SettingsWindow?
 
     private var scale: Double { Double(NSScreen.main?.backingScaleFactor ?? 2) }
 
@@ -36,6 +39,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.center()
         }
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Cmd-,.
+    @objc func showSettings(_ sender: Any?) {
+        let settings = settings ?? SettingsWindow(families: config.fontFamilies, size: config.fontSize) { [weak self] in
+            self?.setFont(families: $0, size: $1)
+        }
+        self.settings = settings
+        settings.showWindow(nil)
+    }
+
+    /// Saves the font to the config file and puts it in every open terminal.
+    private func setFont(families: [String], size: Double) {
+        do {
+            try Config.saveFont(families: families, size: size)
+        } catch {
+            if let window = settings?.window { NSAlert(error: error).beginSheetModal(for: window) }
+            return
+        }
+        config = Config.load()
+        fontFamily = config.fontFamily
+        for terminal in terminals.allObjects where !terminal.setFont(name: fontFamily, size: config.fontSize) {
+            terminal.showNote("config: font-family not found, kept the font")
+        }
+        guard let cell = terminals.anyObject?.renderer.cellSize else { return }
+        for window in NSApp.windows where window.delegate is TabbedWindow {
+            window.contentResizeIncrements = NSSize(width: Double(cell.width) / scale, height: Double(cell.height) / scale)
+        }
     }
 
     /// A window sized for the config's columns and rows, with one tab.
@@ -85,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let session = TerminalSession(cols: UInt16(config.cols), rows: UInt16(config.rows), cwd: cwd, config: config)
         else { return nil }
         let view = TerminalView(session: session, renderer: renderer)
+        terminals.add(view)
         if let problem {
             NSLog("upaa: \(problem)")
             view.showNote(problem)

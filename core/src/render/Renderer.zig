@@ -71,6 +71,14 @@ pub fn buildFrame(self: *Renderer, session: *Session, preedit: []const u8, out: 
     return info;
 }
 
+/// Changes the font (Face.init's names). Keeps the old one if the new one cannot be found.
+pub fn setFont(self: *Renderer, font_name: [*:0]const u8, font_size_px: f64) error{FontNotFound}!void {
+    const face = try Face.init(font_name, font_size_px);
+    self.face.deinit();
+    self.face = face;
+    self.atlas.clear();
+}
+
 pub fn setNote(self: *Renderer, text: []const u8) void {
     self.note_len = @min(text.len, self.note.len);
     @memcpy(self.note[0..self.note_len], text[0..self.note_len]);

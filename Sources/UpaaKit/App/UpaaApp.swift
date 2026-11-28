@@ -68,6 +68,8 @@ public enum UpaaApp {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
         appItem.submenu = NSMenu()
+        appItem.submenu?.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
+        appItem.submenu?.addItem(.separator())
         appItem.submenu?.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         mainMenu.addItem(appItem)
 
