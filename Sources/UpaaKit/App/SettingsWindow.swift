@@ -3,16 +3,15 @@ import AppKit
 /// The Settings window (Cmd-,). As in other Mac apps' settings, a change takes effect as soon as it is made.
 final class SettingsWindow: NSWindowController {
     private let fontButton = NSPopUpButton()
-    private let fallbackButton = NSPopUpButton()
     private let sizeField = NSTextField()
     private let sizeStepper = NSStepper()
-    /// Fallbacks the file lists after the first. The window shows only the first; the rest are kept as they are.
-    private let moreFallbacks: [String]
+    /// One row per fallback, each a menu of every family and a button that removes the row.
+    private let fallbacks = NSStackView()
+    private let families = NSFontManager.shared.availableFontFamilies
     private let onChange: (_ families: [String], _ size: Double) -> Void
 
     /// families is the font, then its fallbacks. onChange gets them back, with the size in points, after each change.
     init(families: [String], size: Double, onChange: @escaping (_ families: [String], _ size: Double) -> Void) {
-        moreFallbacks = Array(families.dropFirst(2))
         self.onChange = onChange
         let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: true)
         window.title = "設定"
@@ -31,41 +30,46 @@ final class SettingsWindow: NSWindowController {
                 fontButton.lastItem?.attributedTitle = NSAttributedString(string: family, attributes: [.font: font])
             }
         }
-        Self.select(families.first, in: fontButton)
-        fallbackButton.addItem(withTitle: "なし")
-        fallbackButton.menu?.addItem(.separator())
-        fallbackButton.addItems(withTitles: manager.availableFontFamilies)
-        if families.count > 1 { Self.select(families[1], in: fallbackButton) }
 
         let formatter = NumberFormatter()
         formatter.minimum = 4
         formatter.maximum = 200
         formatter.maximumFractionDigits = 1
         sizeField.formatter = formatter
-        sizeField.doubleValue = size
         sizeField.alignment = .right
         sizeField.cell?.sendsActionOnEndEditing = true
         sizeStepper.minValue = 4
         sizeStepper.maxValue = 200
-        sizeStepper.doubleValue = size
         sizeStepper.valueWraps = false
-        for control in [fontButton, fallbackButton, sizeField, sizeStepper] as [NSControl] {
+        for control in [fontButton, sizeField, sizeStepper] as [NSControl] {
             control.target = self
             control.action = #selector(changed(_:))
         }
 
+        fallbacks.orientation = .vertical
+        fallbacks.alignment = .leading
+        fallbacks.spacing = 6
+        let add = NSButton(title: "追加", image: NSImage(systemSymbolName: "plus", accessibilityDescription: nil)!,
+                           target: self, action: #selector(addFallback(_:)))
+        add.imagePosition = .imageLeading
+        add.controlSize = .small
+        let fallbackColumn = NSStackView(views: [fallbacks, add])
+        fallbackColumn.orientation = .vertical
+        fallbackColumn.alignment = .leading
+        fallbackColumn.spacing = 6
+
         let note = NSTextField(wrappingLabelWithString:
-            "フォントにない文字（Nerd Font のアイコンなど）はフォールバックで描きます。保存先: "
+            "フォントにない文字（Nerd Font のアイコンなど）は、フォールバックを上から順に探して描きます。保存先: "
                 + (Config.fileURL.path as NSString).abbreviatingWithTildeInPath)
         note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         note.textColor = .secondaryLabelColor
-        note.preferredMaxLayoutWidth = 260
-        let size = NSStackView(views: [sizeField, sizeStepper, NSTextField(labelWithString: "pt")])
-        size.spacing = 4
+        note.preferredMaxLayoutWidth = 290
+        let sizeRow = NSStackView(views: [sizeField, sizeStepper, NSTextField(labelWithString: "pt")])
+        sizeRow.spacing = 4
         let grid = NSGridView(views: [
             [NSTextField(labelWithString: "フォント:"), fontButton],
-            [NSTextField(labelWithString: "サイズ:"), size],
-            [NSTextField(labelWithString: "フォールバック:"), fallbackButton],
+            [NSTextField(labelWithString: "サイズ:"), sizeRow],
+            [NSTextField(labelWithString: "フォールバック:"), fallbackColumn],
             [NSGridCell.emptyContentView, note],
         ])
         grid.rowAlignment = .firstBaseline
@@ -82,20 +86,52 @@ final class SettingsWindow: NSWindowController {
             grid.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
             grid.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
             fontButton.widthAnchor.constraint(equalToConstant: 260),
-            fallbackButton.widthAnchor.constraint(equalTo: fontButton.widthAnchor),
-            note.widthAnchor.constraint(equalTo: fontButton.widthAnchor),
+            note.widthAnchor.constraint(equalToConstant: 290),
             sizeField.widthAnchor.constraint(equalToConstant: 48),
         ])
         window.contentView = content
         // Not the size field, which would open with its text selected.
         window.initialFirstResponder = fontButton
-        window.setContentSize(content.fittingSize)
+        show(families: families, size: size)
         window.center()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not used")
+    }
+
+    /// Shows the font, its fallbacks and the size, as when the config file was changed by hand.
+    func show(families: [String], size: Double) {
+        Self.select(families.first, in: fontButton)
+        sizeField.doubleValue = size
+        sizeStepper.doubleValue = size
+        fallbacks.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        families.dropFirst().forEach(addRow)
+        fit()
+    }
+
+    private func addRow(_ family: String) {
+        let button = NSPopUpButton()
+        button.addItems(withTitles: families)
+        Self.select(family, in: button)
+        button.target = self
+        button.action = #selector(changed(_:))
+        let remove = NSButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: "削除")!,
+                              target: self, action: #selector(removeFallback(_:)))
+        remove.isBordered = false
+        let row = NSStackView(views: [button, remove])
+        row.spacing = 6
+        fallbacks.addArrangedSubview(row)
+        button.widthAnchor.constraint(equalToConstant: 236).isActive = true
+    }
+
+    /// Fits the window to its rows, keeping its top edge where it is.
+    private func fit() {
+        guard let window, let content = window.contentView else { return }
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: content.fittingSize))
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+        window.setFrame(frame, display: true)
     }
 
     /// Selects family, adding it if the list lacks it (a name the file gives that is not a family name, or a font
@@ -106,10 +142,23 @@ final class SettingsWindow: NSWindowController {
         button.selectItem(withTitle: family)
     }
 
-    @objc private func changed(_ sender: NSControl) {
+    /// A new fallback starts as the first Nerd Font installed, the usual reason to add one.
+    @objc private func addFallback(_ sender: Any?) {
+        addRow(families.first { $0.localizedCaseInsensitiveContains("Nerd Font") } ?? families.first ?? "")
+        fit()
+        changed(nil)
+    }
+
+    @objc private func removeFallback(_ sender: NSButton) {
+        sender.superview?.removeFromSuperview()
+        fit()
+        changed(nil)
+    }
+
+    @objc private func changed(_ sender: NSControl?) {
         if sender === sizeStepper { sizeField.doubleValue = sizeStepper.doubleValue } else { sizeStepper.doubleValue = sizeField.doubleValue }
         guard let font = fontButton.titleOfSelectedItem else { return }
-        let fallback = fallbackButton.indexOfSelectedItem > 0 ? fallbackButton.titleOfSelectedItem.map { [$0] } ?? [] : []
-        onChange([font] + fallback + moreFallbacks, sizeField.doubleValue)
+        let chosen = fallbacks.arrangedSubviews.compactMap { ($0 as? NSStackView)?.arrangedSubviews.first as? NSPopUpButton }
+        onChange([font] + chosen.compactMap(\.titleOfSelectedItem), sizeField.doubleValue)
     }
 }

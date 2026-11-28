@@ -67,10 +67,23 @@ public enum UpaaApp {
     private static func makeMainMenu() -> NSMenu {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem()
-        appItem.submenu = NSMenu()
-        appItem.submenu?.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
-        appItem.submenu?.addItem(.separator())
-        appItem.submenu?.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        // The items every Mac app has, in their usual order.
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About upaa", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
+        appMenu.addItem(.separator())
+        let services = NSMenu(title: "Services")
+        appMenu.addItem(withTitle: "Services", action: nil, keyEquivalent: "").submenu = services
+        NSApplication.shared.servicesMenu = services
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide upaa", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+            .keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
         mainMenu.addItem(appItem)
 
         // New Window goes to AppDelegate; the tab and pane items go to the key window's TabbedWindow (its delegate).
@@ -97,6 +110,14 @@ public enum UpaaApp {
         // AppKit names the item Show or Hide Sidebar as the tab list is hidden or shown.
         viewItem.submenu?.addItem(withTitle: "Show Sidebar", action: #selector(NSSplitViewController.toggleSidebar(_:)), keyEquivalent: "b")
         viewItem.submenu?.addItem(withTitle: "Changes Panel", action: #selector(TabbedWindow.toggleSidePanel(_:)), keyEquivalent: "j")
+        viewItem.submenu?.addItem(.separator())
+        viewItem.submenu?.addItem(withTitle: "Default Font Size", action: #selector(AppDelegate.defaultFontSize(_:)), keyEquivalent: "0")
+        viewItem.submenu?.addItem(withTitle: "Bigger", action: #selector(AppDelegate.biggerFont(_:)), keyEquivalent: "+")
+        // Cmd-= as well, since + needs Shift on a US keyboard.
+        let bigger = viewItem.submenu!.addItem(withTitle: "Bigger", action: #selector(AppDelegate.biggerFont(_:)), keyEquivalent: "=")
+        bigger.isHidden = true
+        bigger.allowsKeyEquivalentWhenHidden = true
+        viewItem.submenu?.addItem(withTitle: "Smaller", action: #selector(AppDelegate.smallerFont(_:)), keyEquivalent: "-")
         mainMenu.addItem(viewItem)
 
         // upaa draws its own tabs, so AppKit's window tabs (and the menu items it adds for them) are turned off.

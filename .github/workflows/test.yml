@@ -123,6 +123,10 @@ jobs:
           sleep 2
           id="$(swift "$dir/window.swift" "$pid")"
           [ -z "$id" ] || screencapture -x -o -l "$id" "$dir/settings.png"
+          # A line added to the file by hand reaches the open window (the size shows 20).
+          printf '%s\n' 'font-size = 20' >> "$dir/config/upaa/config"
+          sleep 2
+          [ -z "$id" ] || screencapture -x -o -l "$id" "$dir/settings-reload.png"
           kill "$pid"
           wait "$pid" || true
 
@@ -184,4 +188,5 @@ jobs:
             "With a config file: ![config]($url/config.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" > ../comment.md
           if [ -f ../shots/settings.png ]; then printf '\n%s\n' "Settings (Cmd-,): ![settings]($url/settings.png)" >> ../comment.md; fi
+          if [ -f ../shots/settings-reload.png ]; then printf '\n%s\n' "Settings after font-size = 20 is added to the file: ![settings-reload]($url/settings-reload.png)" >> ../comment.md; fi
           gh pr comment "$PR" --edit-last --create-if-none --body-file ../comment.md

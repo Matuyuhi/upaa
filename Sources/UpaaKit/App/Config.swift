@@ -4,6 +4,8 @@ import Foundation
 /// Settings from $XDG_CONFIG_HOME/upaa/config (~/.config/upaa/config when the variable is unset). Zig parses the text.
 final class Config {
     let handle: OpaquePointer
+    /// The file's text, to tell whether it changed.
+    let text: String
     /// The font, then its fallbacks, one per line.
     let fontFamily: String
     /// Points.
@@ -18,6 +20,7 @@ final class Config {
 
     /// With no text, every setting is the default. Snapshots use this, so the baseline images do not depend on the user's file.
     init(text: String = "") {
+        self.text = text
         let bytes = Array(text.utf8)
         handle = upaa_config_new(bytes, bytes.count)!
         let values = upaa_config_values(handle)
