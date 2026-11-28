@@ -3,12 +3,12 @@ import AppKit
 /// One window with tabs, laid out as design M5 on AppKit's own window parts. A tab is one terminal, or split views with
 /// terminals (panes) at their ends. Each pane has its own shell, and a tab is named after the title its focused pane's
 /// program set.
-/// A split view controller holds the tab list as its sidebar (Cmd-B hides it), the selected tab in the middle with a
+/// A split view controller holds the tab list on the left (Cmd-B hides it), the selected tab in the middle with a
 /// footer under it (the shell, the focused pane's size and the main keys), and the changed files of the focused pane's
 /// git repository as the right panel (Cmd-J). The toolbar holds the split buttons and the right panel's, and shows the
 /// tab's name with its directory and branch. Where the traffic lights, the glass, the toolbar and the panels go, and
-/// how they move, is AppKit's. Behind the terminal is one card of the terminal's background color, translucent over a
-/// color gradient, that runs on under the floating sidebar; the terminal draws no background of its own and runs up under the toolbar, its text below it.
+/// how they move, is AppKit's; the tab list is a glass panel of upaa's own, so that what is behind it shows through.
+/// Behind them all is one card of the terminal's background color, translucent over a color gradient; the terminal draws no background of its own and runs up under the toolbar, its text below it.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
 final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private final class Tab {
@@ -42,6 +42,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private let host = Host()
     private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
     private let changes = ChangesPanel()
+    private var tabColumn: NSSplitViewItem!
     private var panel: NSSplitViewItem!
     /// The focused pane's branch, from the last read of the changes.
     private var branch: String?
@@ -54,9 +55,26 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
 
         // The window was made to fit the terminal; the parts around it are added here.
         let terminalSize = window.contentRect(forFrameRect: window.frame).size
-        let sidebar = NSSplitViewItem(sidebarWithViewController: tabList)
-        sidebar.minimumThickness = 180
-        sidebar.maximumThickness = 360
+        // Set before the controller loads its view.
+        columns.splitView = Columns()
+        columns.splitView.isVertical = true
+        // Sized to the terminal, so that setting the controller does not shrink the window below its title bar.
+        let root = NSViewController()
+        root.view = Backdrop(frame: NSRect(origin: .zero, size: terminalSize))
+        let card = Fill(background)
+        root.view.addSubview(card)
+        card.pin(to: root.view)
+        root.addChild(columns)
+        root.view.addSubview(columns.view)
+        columns.view.pin(to: root.view)
+
+        // The tab list is a glass panel of its own over the card and the gradient, which AppKit's sidebar covers with
+        // its own background; it keeps its width as the window is resized.
+        tabColumn = NSSplitViewItem(viewController: tabList)
+        tabColumn.canCollapse = true
+        tabColumn.holdingPriority = .init(260)
+        tabColumn.minimumThickness = 180
+        tabColumn.maximumThickness = 360
         if #available(macOS 14.0, *) {
             panel = NSSplitViewItem(inspectorWithViewController: Self.controller(changes, inset: 8))
         } else {
@@ -66,10 +84,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         panel.minimumThickness = Chrome.sidePanelWidth
         panel.maximumThickness = 480
         panel.isCollapsed = true
-        let middle = NSSplitViewItem(viewController: terminalArea(background: background))
-        // From macOS 26 the sidebar floats as glass; the gradient and the card run on under it.
-        if #available(macOS 26.0, *) { middle.automaticallyAdjustsSafeAreaInsets = true }
-        columns.splitViewItems = [sidebar, middle, panel]
+        columns.splitViewItems = [tabColumn, NSSplitViewItem(viewController: terminalArea()), panel]
         tabList.onSelect = { [weak self] index in
             guard let self, index != self.selected else { return }
             self.select(index)
@@ -82,9 +97,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
 
         window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
-        // Sized to the terminal, so that setting the controller does not shrink the window below its title bar.
-        columns.view.frame = NSRect(origin: .zero, size: terminalSize)
-        window.contentViewController = columns
+        window.contentViewController = root
         let toolbar = NSToolbar(identifier: "upaa")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
@@ -97,7 +110,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         window.setContentSize(NSSize(
             width: terminalSize.width + Chrome.tabPanelWidth + columns.splitView.dividerThickness,
             height: terminalSize.height + toolbarHeight + Chrome.footerHeight))
-        columns.view.layoutSubtreeIfNeeded()
+        root.view.layoutSubtreeIfNeeded()
         columns.splitView.setPosition(Chrome.tabPanelWidth, ofDividerAt: 0)
 
         watch(first)
@@ -112,10 +125,9 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         onClose?()
     }
 
-    /// The middle of the window: the gradient and the card, the selected tab over them, and the footer under it with the
-    /// shell, the focused pane's size and the main keys, its text in line with the terminal's. The tab and the footer
-    /// keep to the safe area, out from under the sidebar.
-    private func terminalArea(background: NSColor) -> NSViewController {
+    /// The middle of the window: the selected tab, and the footer under it with the shell, the focused pane's size and
+    /// the main keys, its text in line with the terminal's.
+    private func terminalArea() -> NSViewController {
         let shell = (ProcessInfo.processInfo.environment["SHELL"].map { ($0 as NSString).lastPathComponent }) ?? "sh"
         let space = NSView()
         space.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -127,18 +139,15 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         footer.spacing = 14
         host.wantsLayer = true
         host.layer?.masksToBounds = true
-        let view = Backdrop(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
-        let card = Fill(background)
-        view.addSubview(card)
-        card.pin(to: view)
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
         for subview in [host, footer] as [NSView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(subview)
         }
         NSLayoutConstraint.activate([
             host.topAnchor.constraint(equalTo: view.topAnchor),
-            host.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            host.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             host.bottomAnchor.constraint(equalTo: footer.topAnchor),
             footer.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
             footer.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -Renderer.paddingPoints.horizontal),
@@ -255,6 +264,11 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         let index = sender.tag == 9 ? tabs.count - 1 : sender.tag - 1
         guard index < tabs.count else { return NSSound.beep() }
         select(index)
+    }
+
+    /// Cmd-B. Shows or hides the tab list, as AppKit animates a split view's panel.
+    @objc func toggleTabList(_ sender: Any?) {
+        tabColumn.animator().isCollapsed = !tabColumn.isCollapsed
     }
 
     /// Cmd-J. Shows or hides the right panel, as AppKit animates a split view's panel.
@@ -440,4 +454,9 @@ private final class Host: NSView {
 private func terminals(in view: NSView) -> [TerminalView] {
     if let terminal = view as? TerminalView { return [terminal] }
     return (view as? NSSplitView)?.arrangedSubviews.flatMap(terminals(in:)) ?? []
+}
+
+/// The window's columns. The tab list's glass and the right panel mark their own edges, so the dividers draw nothing.
+private final class Columns: NSSplitView {
+    override func drawDivider(in rect: NSRect) {}
 }

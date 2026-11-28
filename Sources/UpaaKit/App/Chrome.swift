@@ -17,6 +17,10 @@ enum Chrome {
     static let pressed = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.2) : NSColor(white: 0, alpha: 0.11) }
     /// How long a row's change of color takes.
     static let animation: TimeInterval = 0.2
+    /// The tint of the glass panels. The design's white at 0.5 makes the light glass solid, so light mode takes less.
+    static let glass = NSColor(name: nil) {
+        $0.isDark ? NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.45) : NSColor(white: 1, alpha: 0.2)
+    }
     static let addedLine = NSColor.systemGreen.withAlphaComponent(0.18)
     static let removedLine = NSColor.systemRed.withAlphaComponent(0.16)
 
@@ -53,6 +57,56 @@ extension NSView {
             topAnchor.constraint(equalTo: other.topAnchor, constant: inset),
             bottomAnchor.constraint(equalTo: other.bottomAnchor, constant: -inset),
         ])
+    }
+}
+
+/// A rounded panel of the system's glass: Liquid Glass on macOS 26 and later, a blurred material before.
+/// Put the panel's views in content.
+final class GlassPanel: NSView {
+    let content = NSView()
+
+    init(cornerRadius: CGFloat) {
+        super.init(frame: .zero)
+        let glass: NSView
+        if #available(macOS 26.0, *) {
+            let view = NSGlassEffectView()
+            view.cornerRadius = cornerRadius
+            view.contentView = content
+            glass = view
+        } else {
+            let view = NSVisualEffectView()
+            view.material = .popover
+            view.blendingMode = .withinWindow
+            view.state = .active
+            view.wantsLayer = true
+            view.layer?.cornerRadius = cornerRadius
+            view.layer?.masksToBounds = true
+            view.addSubview(content)
+            content.pin(to: view)
+            glass = view
+        }
+        addSubview(glass)
+        glass.pin(to: self)
+    }
+
+    /// The glass keeps the tint it is given as one fixed color, so it gets the tint for this view's light or dark mode
+    /// each time that changes. A tint set before the view is in a window resolved to light mode.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        guard #available(macOS 26.0, *), let glass = subviews.first as? NSGlassEffectView else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            glass.tintColor = NSColor(cgColor: Chrome.glass.cgColor)
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        viewDidChangeEffectiveAppearance()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
     }
 }
 

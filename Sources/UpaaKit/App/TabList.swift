@@ -1,7 +1,7 @@
 import AppKit
 
 /// The window's sidebar: a source list of the tabs, each with its name and the directory of its focused pane, under
-/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own.
+/// a heading with the button for a new tab, on a glass panel. The list's look, selection and hover are AppKit's own.
 final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// A row was picked by the user.
     var onSelect: ((Int) -> Void)?
@@ -17,6 +17,7 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         table.addTableColumn(column)
         table.style = .sourceList
         table.headerView = nil
+        table.backgroundColor = .clear
         table.rowHeight = 40
         table.allowsEmptySelection = false
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
@@ -48,20 +49,24 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         scroll.autohidesScrollers = true
 
         let view = NSView(frame: NSRect(x: 0, y: 0, width: Chrome.tabPanelWidth, height: 400))
+        // The panel runs up behind the traffic lights, as AppKit's floating sidebar does.
+        let panel = GlassPanel(cornerRadius: 16)
+        view.addSubview(panel)
+        panel.pin(to: view, inset: 8)
         for subview in [heading, scroll] {
             subview.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(subview)
+            panel.content.addSubview(subview)
         }
         // The safe area keeps the heading below the traffic lights and the toolbar.
         NSLayoutConstraint.activate([
             heading.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            heading.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            heading.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            heading.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 12),
+            heading.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -8),
             heading.heightAnchor.constraint(equalToConstant: 24),
             scroll.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 2),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -8),
         ])
         self.view = view
     }
