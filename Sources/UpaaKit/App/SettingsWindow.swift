@@ -14,7 +14,7 @@ final class SettingsWindow: NSWindowController {
     init(families: [String], size: Double, onChange: @escaping (_ families: [String], _ size: Double) -> Void) {
         self.onChange = onChange
         let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: true)
-        window.title = "設定"
+        window.title = String(localized: "Settings")
         window.isReleasedWhenClosed = false
         super.init(window: window)
 
@@ -49,7 +49,7 @@ final class SettingsWindow: NSWindowController {
         fallbacks.orientation = .vertical
         fallbacks.alignment = .leading
         fallbacks.spacing = 6
-        let add = NSButton(title: "追加", image: NSImage(systemSymbolName: "plus", accessibilityDescription: nil)!,
+        let add = NSButton(title: String(localized: "Add"), image: NSImage(systemSymbolName: "plus", accessibilityDescription: nil)!,
                            target: self, action: #selector(addFallback(_:)))
         add.imagePosition = .imageLeading
         add.controlSize = .small
@@ -58,18 +58,20 @@ final class SettingsWindow: NSWindowController {
         fallbackColumn.alignment = .leading
         fallbackColumn.spacing = 6
 
-        let note = NSTextField(wrappingLabelWithString:
-            "フォントにない文字（Nerd Font のアイコンなど）は、フォールバックを上から順に探して描きます。保存先: "
-                + (Config.fileURL.path as NSString).abbreviatingWithTildeInPath)
+        let saved = (Config.fileURL.path as NSString).abbreviatingWithTildeInPath
+        let note = NSTextField(wrappingLabelWithString: String(localized: """
+            Characters the font lacks (such as Nerd Font icons) are drawn with the first fallback that has them, \
+            from the top. Saved in: \(saved)
+            """))
         note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         note.textColor = .secondaryLabelColor
         note.preferredMaxLayoutWidth = 290
         let sizeRow = NSStackView(views: [sizeField, sizeStepper, NSTextField(labelWithString: "pt")])
         sizeRow.spacing = 4
         let grid = NSGridView(views: [
-            [NSTextField(labelWithString: "フォント:"), fontButton],
-            [NSTextField(labelWithString: "サイズ:"), sizeRow],
-            [NSTextField(labelWithString: "フォールバック:"), fallbackColumn],
+            [NSTextField(labelWithString: String(localized: "Font:")), fontButton],
+            [NSTextField(labelWithString: String(localized: "Size:")), sizeRow],
+            [NSTextField(labelWithString: String(localized: "Fallbacks:")), fallbackColumn],
             [NSGridCell.emptyContentView, note],
         ])
         grid.rowAlignment = .firstBaseline
@@ -117,7 +119,7 @@ final class SettingsWindow: NSWindowController {
         Self.select(family, in: button)
         button.target = self
         button.action = #selector(changed(_:))
-        let remove = NSButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: "削除")!,
+        let remove = NSButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: String(localized: "Remove"))!,
                               target: self, action: #selector(removeFallback(_:)))
         remove.isBordered = false
         let row = NSStackView(views: [button, remove])

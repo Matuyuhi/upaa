@@ -1,0 +1,75 @@
+/* Japanese for the text in Sources/UpaaKit. The keys are the English text, written with String(localized:). */
+
+/* Menus */
+"About upaa" = "upaaについて";
+"Settings…" = "設定…";
+"Services" = "サービス";
+"Hide upaa" = "upaaを非表示";
+"Hide Others" = "ほかを非表示";
+"Show All" = "すべてを表示";
+"Quit upaa" = "upaaを終了";
+"File" = "ファイル";
+"New Window" = "新規ウインドウ";
+"New Tab" = "新規タブ";
+"Split Right" = "縦に分割";
+"Split Down" = "横に分割";
+"Close" = "閉じる";
+"Edit" = "編集";
+"Copy" = "コピー";
+"Paste" = "ペースト";
+"Select All" = "すべてを選択";
+"View" = "表示";
+"Show Sidebar" = "サイドバーを表示";
+"Changes Panel" = "右パネル";
+"Default Font Size" = "デフォルトのフォントサイズ";
+"Bigger" = "拡大";
+"Smaller" = "縮小";
+"Window" = "ウインドウ";
+"Minimize" = "しまう";
+"Show Previous Pane" = "前のペインを表示";
+"Show Next Pane" = "次のペインを表示";
+"Show Previous Tab" = "前のタブを表示";
+"Show Next Tab" = "次のタブを表示";
+
+/* Window, tabs and toolbar */
+"Tabs" = "タブ";
+"New Tab (⌘T)" = "新規タブ (⌘T)";
+"Close Tab" = "タブを閉じる";
+"Close Tab (⌘W)" = "タブを閉じる (⌘W)";
+"Split Right (⌘D)" = "縦に分割 (⌘D)";
+"Split Down (⇧⌘D)" = "横に分割 (⇧⌘D)";
+"Changes Panel (⌘J)" = "右パネル (⌘J)";
+"⌘D Split · ⌘B Tabs" = "⌘D 分割 · ⌘B タブ一覧";
+
+/* Asking before closing or quitting */
+"Close this tab?" = "このタブを閉じますか？";
+"Close this pane?" = "このペインを閉じますか？";
+"Close this window?" = "このウィンドウを閉じますか？";
+"Quit upaa?" = "upaaを終了しますか？";
+"Quit" = "終了";
+"Cancel" = "キャンセル";
+"A program is running. Closing will end it." = "実行中のプログラムがあります。閉じると終了します。";
+"%@ is running. Closing will end it." = "%@ が実行中です。閉じると終了します。";
+
+/* Pasting */
+"Paste text that may run commands?" = "コマンドが実行されるかもしれないテキストをペーストしますか？";
+"The text contains a line break or a control sequence, so the shell may run it as soon as it is pasted." = "改行か制御シーケンスが含まれているため、ペーストしたとたんにシェルが実行するかもしれません。";
+
+/* Changes panel */
+"Open in Editor" = "エディタで開く";
+"Not a git repository" = "git のリポジトリではありません";
+"Changes" = "変更";
+"No changes" = "変更はありません";
+"New" = "新規";
+
+/* Settings */
+"Settings" = "設定";
+"Font:" = "フォント:";
+"Size:" = "サイズ:";
+"Fallbacks:" = "フォールバック:";
+"Add" = "追加";
+"Remove" = "削除";
+"Characters the font lacks (such as Nerd Font icons) are drawn with the first fallback that has them, from the top. Saved in: %@" = "フォントにない文字（Nerd Font のアイコンなど）は、フォールバックを上から順に探して描きます。保存先: %@";
+
+/* Update check */
+"%@ is available (current %@). Run: upaa update" = "%1$@ が出ています（いまは %2$@）。更新: upaa update";

@@ -69,66 +69,66 @@ public enum UpaaApp {
         let appItem = NSMenuItem()
         // The items every Mac app has, in their usual order.
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About upaa", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: String(localized: "About upaa"), action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
+        appMenu.addItem(withTitle: String(localized: "Settings…"), action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         appMenu.addItem(.separator())
-        let services = NSMenu(title: "Services")
-        appMenu.addItem(withTitle: "Services", action: nil, keyEquivalent: "").submenu = services
+        let services = NSMenu(title: String(localized: "Services"))
+        appMenu.addItem(withTitle: String(localized: "Services"), action: nil, keyEquivalent: "").submenu = services
         NSApplication.shared.servicesMenu = services
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide upaa", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: String(localized: "Hide upaa"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: String(localized: "Hide Others"), action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
             .keyEquivalentModifierMask = [.command, .option]
-        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: String(localized: "Show All"), action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit upaa", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: String(localized: "Quit upaa"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
 
         // New Window goes to AppDelegate; the tab and pane items go to the key window's TabbedWindow (its delegate).
         // The keys for upaa's own commands are all set here.
         let fileItem = NSMenuItem()
-        fileItem.submenu = NSMenu(title: "File")
-        fileItem.submenu?.addItem(withTitle: "New Window", action: #selector(AppDelegate.newWindow(_:)), keyEquivalent: "n")
-        fileItem.submenu?.addItem(withTitle: "New Tab", action: #selector(TabbedWindow.newTab(_:)), keyEquivalent: "t")
-        fileItem.submenu?.addItem(withTitle: "Split Right", action: #selector(TabbedWindow.splitRight(_:)), keyEquivalent: "d")
-        fileItem.submenu?.addItem(withTitle: "Split Down", action: #selector(TabbedWindow.splitDown(_:)), keyEquivalent: "D")
-        fileItem.submenu?.addItem(withTitle: "Close", action: #selector(TabbedWindow.closePane(_:)), keyEquivalent: "w")
+        fileItem.submenu = NSMenu(title: String(localized: "File"))
+        fileItem.submenu?.addItem(withTitle: String(localized: "New Window"), action: #selector(AppDelegate.newWindow(_:)), keyEquivalent: "n")
+        fileItem.submenu?.addItem(withTitle: String(localized: "New Tab"), action: #selector(TabbedWindow.newTab(_:)), keyEquivalent: "t")
+        fileItem.submenu?.addItem(withTitle: String(localized: "Split Right"), action: #selector(TabbedWindow.splitRight(_:)), keyEquivalent: "d")
+        fileItem.submenu?.addItem(withTitle: String(localized: "Split Down"), action: #selector(TabbedWindow.splitDown(_:)), keyEquivalent: "D")
+        fileItem.submenu?.addItem(withTitle: String(localized: "Close"), action: #selector(TabbedWindow.closePane(_:)), keyEquivalent: "w")
         mainMenu.addItem(fileItem)
 
         // The actions go to the first responder (TerminalView).
         let editItem = NSMenuItem()
-        editItem.submenu = NSMenu(title: "Edit")
-        editItem.submenu?.addItem(withTitle: "Copy", action: #selector(TerminalView.copy(_:)), keyEquivalent: "c")
-        editItem.submenu?.addItem(withTitle: "Paste", action: #selector(TerminalView.paste(_:)), keyEquivalent: "v")
-        editItem.submenu?.addItem(withTitle: "Select All", action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = NSMenu(title: String(localized: "Edit"))
+        editItem.submenu?.addItem(withTitle: String(localized: "Copy"), action: #selector(TerminalView.copy(_:)), keyEquivalent: "c")
+        editItem.submenu?.addItem(withTitle: String(localized: "Paste"), action: #selector(TerminalView.paste(_:)), keyEquivalent: "v")
+        editItem.submenu?.addItem(withTitle: String(localized: "Select All"), action: #selector(NSResponder.selectAll(_:)), keyEquivalent: "a")
         mainMenu.addItem(editItem)
 
         let viewItem = NSMenuItem()
-        viewItem.submenu = NSMenu(title: "View")
+        viewItem.submenu = NSMenu(title: String(localized: "View"))
         // AppKit names the item Show or Hide Sidebar as the tab list is hidden or shown.
-        viewItem.submenu?.addItem(withTitle: "Show Sidebar", action: #selector(NSSplitViewController.toggleSidebar(_:)), keyEquivalent: "b")
-        viewItem.submenu?.addItem(withTitle: "Changes Panel", action: #selector(TabbedWindow.toggleSidePanel(_:)), keyEquivalent: "j")
+        viewItem.submenu?.addItem(withTitle: String(localized: "Show Sidebar"), action: #selector(NSSplitViewController.toggleSidebar(_:)), keyEquivalent: "b")
+        viewItem.submenu?.addItem(withTitle: String(localized: "Changes Panel"), action: #selector(TabbedWindow.toggleSidePanel(_:)), keyEquivalent: "j")
         viewItem.submenu?.addItem(.separator())
-        viewItem.submenu?.addItem(withTitle: "Default Font Size", action: #selector(AppDelegate.defaultFontSize(_:)), keyEquivalent: "0")
-        viewItem.submenu?.addItem(withTitle: "Bigger", action: #selector(AppDelegate.biggerFont(_:)), keyEquivalent: "+")
+        viewItem.submenu?.addItem(withTitle: String(localized: "Default Font Size"), action: #selector(AppDelegate.defaultFontSize(_:)), keyEquivalent: "0")
+        viewItem.submenu?.addItem(withTitle: String(localized: "Bigger"), action: #selector(AppDelegate.biggerFont(_:)), keyEquivalent: "+")
         // Cmd-= as well, since + needs Shift on a US keyboard.
-        let bigger = viewItem.submenu!.addItem(withTitle: "Bigger", action: #selector(AppDelegate.biggerFont(_:)), keyEquivalent: "=")
+        let bigger = viewItem.submenu!.addItem(withTitle: String(localized: "Bigger"), action: #selector(AppDelegate.biggerFont(_:)), keyEquivalent: "=")
         bigger.isHidden = true
         bigger.allowsKeyEquivalentWhenHidden = true
-        viewItem.submenu?.addItem(withTitle: "Smaller", action: #selector(AppDelegate.smallerFont(_:)), keyEquivalent: "-")
+        viewItem.submenu?.addItem(withTitle: String(localized: "Smaller"), action: #selector(AppDelegate.smallerFont(_:)), keyEquivalent: "-")
         mainMenu.addItem(viewItem)
 
         // upaa draws its own tabs, so AppKit's window tabs (and the menu items it adds for them) are turned off.
         NSWindow.allowsAutomaticWindowTabbing = false
         let windowItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Show Previous Pane", action: #selector(TabbedWindow.showPreviousPane(_:)), keyEquivalent: "[")
-        windowMenu.addItem(withTitle: "Show Next Pane", action: #selector(TabbedWindow.showNextPane(_:)), keyEquivalent: "]")
-        windowMenu.addItem(withTitle: "Show Previous Tab", action: #selector(TabbedWindow.showPreviousTab(_:)), keyEquivalent: "{")
-        windowMenu.addItem(withTitle: "Show Next Tab", action: #selector(TabbedWindow.showNextTab(_:)), keyEquivalent: "}")
+        let windowMenu = NSMenu(title: String(localized: "Window"))
+        windowMenu.addItem(withTitle: String(localized: "Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: String(localized: "Show Previous Pane"), action: #selector(TabbedWindow.showPreviousPane(_:)), keyEquivalent: "[")
+        windowMenu.addItem(withTitle: String(localized: "Show Next Pane"), action: #selector(TabbedWindow.showNextPane(_:)), keyEquivalent: "]")
+        windowMenu.addItem(withTitle: String(localized: "Show Previous Tab"), action: #selector(TabbedWindow.showPreviousTab(_:)), keyEquivalent: "{")
+        windowMenu.addItem(withTitle: String(localized: "Show Next Tab"), action: #selector(TabbedWindow.showNextTab(_:)), keyEquivalent: "}")
         // Cmd-1 to Cmd-9 pick a tab without listing nine items in the menu.
         for number in 1...9 {
             let item = windowMenu.addItem(withTitle: "Show Tab \(number)", action: #selector(TabbedWindow.showTab(_:)), keyEquivalent: "\(number)")

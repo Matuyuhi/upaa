@@ -90,7 +90,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         tabStrip.onClose = { [weak self] index in
             guard let self else { return }
             let tab = self.tabs[index]
-            self.ask("このタブを閉じますか？", about: tab.panes) { [weak self] in
+            self.ask(String(localized: "Close this tab?"), about: tab.panes) { [weak self] in
                 if let self, let index = self.tabs.firstIndex(where: { $0 === tab }) { self.closeTab(at: index) }
             }
         }
@@ -149,7 +149,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The window's close button and Cmd-Shift-W ask first while a program runs in one of its panes.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard running.isEmpty else {
-            ask("このウィンドウを閉じますか？", about: tabs.flatMap(\.panes)) { [weak self] in self?.window.close() }
+            ask(String(localized: "Close this window?"), about: tabs.flatMap(\.panes)) { [weak self] in self?.window.close() }
             return false
         }
         return true
@@ -163,7 +163,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private func ask(_ question: String, about panes: [TerminalView], then: @escaping () -> Void) {
         let running = panes.compactMap(\.session.running)
         guard !running.isEmpty else { return then() }
-        Self.alert(question, button: "閉じる", running: running).beginSheetModal(for: window) {
+        Self.alert(question, button: String(localized: "Close"), running: running).beginSheetModal(for: window) {
             if $0 == .alertFirstButtonReturn { then() }
         }
     }
@@ -174,10 +174,10 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         let alert = NSAlert()
         alert.messageText = question
         alert.informativeText = names.isEmpty
-            ? "実行中のプログラムがあります。閉じると終了します。"
-            : "\(names.joined(separator: "、")) が実行中です。閉じると終了します。"
+            ? String(localized: "A program is running. Closing will end it.")
+            : String(localized: "\(ListFormatter.localizedString(byJoining: names)) is running. Closing will end it.")
         alert.addButton(withTitle: button)
-        alert.addButton(withTitle: "キャンセル")
+        alert.addButton(withTitle: String(localized: "Cancel"))
         return alert
     }
 
@@ -195,7 +195,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         let footer = NSStackView(views: [
             Chrome.label(shell, size: 11, color: .secondaryLabelColor), sizeLabel,
             Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space,
-            Chrome.label("⌘D 分割 · ⌘B タブ一覧", size: 11, color: .secondaryLabelColor),
+            Chrome.label(String(localized: "⌘D Split · ⌘B Tabs"), size: 11, color: .secondaryLabelColor),
         ])
         footer.spacing = 14
         host.wantsLayer = true
@@ -261,14 +261,14 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         switch identifier {
         case Self.tabsEdge: return NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: columns.splitView, dividerIndex: 0)
         case Self.panelEdge: return NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: columns.splitView, dividerIndex: 1)
-        case Self.splitRight: return button(identifier, "rectangle.split.2x1", "縦に分割 (⌘D)", #selector(splitRight(_:)))
-        case Self.splitDown: return button(identifier, "rectangle.split.1x2", "横に分割 (⇧⌘D)", #selector(splitDown(_:)))
-        case Self.panelButton: return button(identifier, "sidebar.right", "右パネル (⌘J)", #selector(toggleSidePanel(_:)))
-        case Self.newTabButton: return button(identifier, "plus", "新しいタブ (⌘T)", #selector(newTab(_:)))
+        case Self.splitRight: return button(identifier, "rectangle.split.2x1", String(localized: "Split Right (⌘D)"), #selector(splitRight(_:)))
+        case Self.splitDown: return button(identifier, "rectangle.split.1x2", String(localized: "Split Down (⇧⌘D)"), #selector(splitDown(_:)))
+        case Self.panelButton: return button(identifier, "sidebar.right", String(localized: "Changes Panel (⌘J)"), #selector(toggleSidePanel(_:)))
+        case Self.newTabButton: return button(identifier, "plus", String(localized: "New Tab (⌘T)"), #selector(newTab(_:)))
         case Self.tabsItem:
             let item = NSToolbarItem(itemIdentifier: identifier)
             item.view = tabStrip
-            item.label = "タブ"
+            item.label = String(localized: "Tabs")
             return item
         default: return nil
         }
@@ -332,7 +332,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// Closes the focused pane, and the tab with its last pane, asking first while it runs a program.
     @objc func closePane(_ sender: Any?) {
         let pane = tabs[selected].focus
-        ask("このペインを閉じますか？", about: [pane]) { [weak self] in self?.close(pane) }
+        ask(String(localized: "Close this pane?"), about: [pane]) { [weak self] in self?.close(pane) }
     }
 
     /// Puts a new pane to the right of the focused one.

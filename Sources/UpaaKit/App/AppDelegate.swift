@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let running = windows.flatMap(\.running)
         guard !running.isEmpty else { return .terminateNow }
-        let alert = TabbedWindow.alert("upaaを終了しますか？", button: "終了", running: running)
+        let alert = TabbedWindow.alert(String(localized: "Quit upaa?"), button: String(localized: "Quit"), running: running)
         return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
