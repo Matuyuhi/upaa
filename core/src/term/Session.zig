@@ -600,6 +600,10 @@ fn promptsAfterResizes(command: [*:0]const u8) !usize {
     for ([_]u16{ 50, 70, 40, 80 }) |cols| {
         self.resize(.{ .cols = cols, .rows = 24 }, 8, 16);
         try self.waitForPrompt(cols, &out);
+        // TEMP diagnostics for #59, removed before merge.
+        _ = c.usleep(100 * 1000);
+        const m = self.plainText(&out) orelse 0;
+        std.debug.print("\n=== {s} cols={d}\n{s}\n===\n", .{ command, cols, out[0..@min(m, out.len)] });
     }
     _ = c.usleep(200 * 1000);
     const n = self.plainText(&out) orelse return error.FormatFailed;
