@@ -17,6 +17,8 @@ final class Config {
     let rows: Int
     /// The lines that could not be read, as Zig words them.
     let problems: [String]
+    /// Whether the app opens the socket that the upaa command reaches it through from a pane (RemoteControl).
+    let remoteControl: Bool
 
     /// With no text, every setting is the default. Snapshots use this, so the baseline images do not depend on the user's file.
     init(text: String = "") {
@@ -29,6 +31,7 @@ final class Config {
         backgroundOpacity = values.background_opacity
         cols = Int(values.window_width)
         rows = Int(values.window_height)
+        remoteControl = values.remote_control
         problems = values.problems.map { String(cString: $0).components(separatedBy: "\n") } ?? []
     }
 
