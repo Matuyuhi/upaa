@@ -469,7 +469,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     }
 
     /// The terminal's text, the title and the footer start on one line, 12 pt from the tab panel as in the design.
-    private static let textInset = 12 - Renderer.paddingPoints.horizontal
+    private static let textInset: CGFloat = 12 - Renderer.paddingPoints.horizontal
 
     private func arrange(sidePanel shown: Bool) {
         // Showing or hiding the right panel is animated, as Xcode's inspector is; moving the tabs is not.
