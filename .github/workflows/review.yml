@@ -2,10 +2,10 @@ name: review
 
 # Claude reviews a pull request when it is opened as ready, a draft is marked ready for review, or a push lands on it.
 # The review ends with a verdict line, which the last step turns into the label ready-to-merge or needs-human.
-# Pull requests from forks are skipped by the action itself.
+# A draft only loses the label. Pull requests from forks are skipped: their token cannot label, and they get no label.
 on:
   pull_request:
-    types: [opened, ready_for_review, synchronize]
+    types: [opened, ready_for_review, synchronize, converted_to_draft]
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   review:
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -40,11 +40,13 @@ jobs:
           done
 
       # The whole history, for git log and git diff against the commit of an earlier review.
-      - uses: actions/checkout@v7.0.1
+      - if: ${{ !github.event.pull_request.draft }}
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: anthropics/claude-code-action@v1.0.290
+      - if: ${{ !github.event.pull_request.draft }}
+        uses: anthropics/claude-code-action@v1.0.290
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -61,7 +63,7 @@ jobs:
       # Reads the verdict line of this workflow's review on this commit. With no such review, or for the paths below,
       # the label is needs-human.
       - name: Label the verdict
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !github.event.pull_request.draft }}
         run: |
           body="$(gh api "repos/$GH_REPO/pulls/$PR/reviews?per_page=100" \
             --jq "[.[] | select(.user.login == \"github-actions[bot]\" and .commit_id == \"$SHA\")] | last | .body // \"\"")"
