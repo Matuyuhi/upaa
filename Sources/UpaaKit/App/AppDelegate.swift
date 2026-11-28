@@ -18,7 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         UpdateCheck.run { [weak terminal] message in terminal?.showNote(message) }
-        window.center()
+        // The first window opens where it was last left, at the size it was left; the config's size is for the first
+        // launch and for new windows.
+        window.setFrameAutosaveName("upaa")
+        if !window.setFrameUsingName("upaa") { window.center() }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

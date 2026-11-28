@@ -39,11 +39,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The tab list, the selected tab and the right panel, side by side.
     private let columns = NSSplitViewController()
     private let tabList: TabList
-    /// The tabs in the toolbar while the tab list is hidden, the names they show, and the animation of a segment's
-    /// width while a tab opens or closes.
-    private let tabStrip = NSSegmentedControl(labels: [], trackingMode: .selectOne, target: nil, action: nil)
-    private var stripTitles: [String] = []
-    private var stripAnimation: Timer?
+    /// The tabs in the toolbar while the tab list is hidden.
+    private let tabStrip = TabStrip()
     /// The host's left and right edges, moved in from the window's edges while the tabs are along the top.
     private var hostEdges: [NSLayoutConstraint] = []
     /// Holds the selected tab's view.
@@ -86,16 +83,26 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         panel.maximumThickness = 480
         panel.isCollapsed = true
         columns.splitViewItems = [sidebar, NSSplitViewItem(viewController: terminalArea()), panel]
-        tabStrip.target = self
-        tabStrip.action = #selector(pickTab(_:))
+        tabStrip.onSelect = { [weak self] index in
+            guard let self, index != self.selected else { return }
+            self.select(index)
+        }
+        tabStrip.onClose = { [weak self] in self?.closeTab(at: $0) }
+        tabStrip.onMove = { [weak self] in self?.moveTab(from: $0, to: $1) }
         NotificationCenter.default.addObserver(self, selector: #selector(placeTabs(_:)),
                                                name: NSSplitView.didResizeSubviewsNotification, object: columns.splitView)
         tabList.onSelect = { [weak self] index in
             guard let self, index != self.selected else { return }
             self.select(index)
         }
-        changes.onUpdate = { [weak self] branch in
-            guard let self, branch != self.branch else { return }
+        changes.onUpdate = { [weak self] branch, count in
+            guard let self else { return }
+            // A mark on the right panel's button that the focused pane's repository has changes.
+            if #available(macOS 14.0, *) {
+                let item = self.window.toolbar?.items.first { $0.itemIdentifier == Self.panelButton }
+                item?.badge = count > 0 ? .count(count) : nil
+            }
+            guard branch != self.branch else { return }
             self.branch = branch
             self.refresh()
         }
@@ -117,12 +124,18 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
             height: terminalSize.height + toolbarHeight + Chrome.footerHeight))
         root.view.layoutSubtreeIfNeeded()
         columns.splitView.setPosition(Chrome.tabPanelWidth, ofDividerAt: 0)
+        windowDidResize(Notification(name: NSWindow.didResizeNotification))
 
         watch(first)
         tabs.append(Tab(first))
         select(0)
         // The tab list follows the shells' directories, and the panel the files, without a signal from either.
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.readChanges() }
+    }
+
+    /// The tabs along the top get the window's width less what the traffic lights and the buttons beside them take.
+    func windowDidResize(_ notification: Notification) {
+        tabStrip.room = max(0, window.frame.width - 300)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -232,64 +245,35 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     }
 
     /// With the tab list hidden (Cmd-B, or its divider dragged to the edge), the tabs and the new tab button go into
-    /// the toolbar beside the traffic lights, in place of the window's title; shown again, they go back.
+    /// the toolbar beside the traffic lights, in place of the window's title, the tabs widening from nothing; shown
+    /// again, they fade out and go back.
     @objc private func placeTabs(_ notification: Notification) {
         guard let toolbar = window.toolbar else { return }
         let top = columns.splitViewItems[0].isCollapsed
-        guard top != toolbar.items.contains(where: { $0.itemIdentifier == Self.tabsItem }) else { return }
-        if top {
+        let shown = toolbar.items.contains { $0.itemIdentifier == Self.tabsItem }
+        if top, !shown {
             toolbar.insertItem(withItemIdentifier: Self.newTabButton, at: 1)
             toolbar.insertItem(withItemIdentifier: Self.tabsItem, at: 1)
-        } else {
-            for identifier in [Self.tabsItem, Self.newTabButton] {
-                if let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == identifier }) { toolbar.removeItem(at: index) }
+            window.titleVisibility = .hidden
+        } else if top, tabStrip.alphaValue < 1 {
+            // The tab list was hidden again while the tabs faded out.
+            tabStrip.animator().alphaValue = 1
+        } else if !top, shown, tabStrip.alphaValue == 1 {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = Chrome.animation
+                self.tabStrip.animator().alphaValue = 0
+            }) { [weak self] in
+                guard let self, !self.columns.splitViewItems[0].isCollapsed else { return }
+                for identifier in [Self.tabsItem, Self.newTabButton] {
+                    if let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == identifier }) { toolbar.removeItem(at: index) }
+                }
+                self.tabStrip.alphaValue = 1
+                self.window.titleVisibility = .visible
             }
         }
-        window.titleVisibility = top ? .hidden : .visible
         // Design A3 puts the text 18 from the window's edges with the tabs along the top; the terminal keeps 8 itself.
-        hostEdges.forEach { $0.constant = top ? 10 : 0 }
-    }
-
-    /// Shows the tabs' names in the strip. A tab that opens widens from nothing and one that closes narrows to nothing,
-    /// as tabs do in Safari; the other segments move aside as it does.
-    private func showStrip(_ titles: [String]) {
-        let old = stripTitles
-        stripTitles = titles
-        if titles.count == old.count, stripAnimation?.isValid == true { return }
-        stripAnimation?.invalidate()
-        guard abs(titles.count - old.count) == 1, !old.isEmpty else { return label(titles, selected: selected) }
-        // Where the two lists part: the tab that opened or closed, or one with the same name, which looks the same.
-        let index = (0..<min(old.count, titles.count)).first { old[$0] != titles[$0] } ?? min(old.count, titles.count)
-        let opening = titles.count > old.count
-        // A closing tab keeps its segment, after the chosen one, until it has narrowed.
-        label(opening ? titles : old, selected: opening || selected < index ? selected : selected + 1)
-        let full = tabStrip.intrinsicContentSize.width
-        tabStrip.setWidth(1, forSegment: index)
-        let width = full - tabStrip.intrinsicContentSize.width + 1
-        let (from, to): (CGFloat, CGFloat) = opening ? (1, width) : (width, 1)
-        let start = CACurrentMediaTime()
-        stripAnimation = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
-            guard let self else { return timer.invalidate() }
-            let t = CGFloat(min(1, (CACurrentMediaTime() - start) / Chrome.animation))
-            self.tabStrip.setWidth(from + (to - from) * t * t * (3 - 2 * t), forSegment: index)
-            guard t == 1 else { return }
-            timer.invalidate()
-            self.label(self.stripTitles, selected: self.selected)
-        }
-    }
-
-    /// Puts the names in the strip at their own widths, a long name cut short.
-    private func label(_ titles: [String], selected: Int) {
-        tabStrip.segmentCount = titles.count
-        for (index, title) in titles.enumerated() {
-            tabStrip.setLabel(title.count > 24 ? String(title.prefix(23)) + "…" : title, forSegment: index)
-            tabStrip.setWidth(0, forSegment: index)
-        }
-        tabStrip.selectedSegment = selected
-    }
-
-    @objc private func pickTab(_ sender: NSSegmentedControl) {
-        if sender.selectedSegment != selected { select(sender.selectedSegment) }
+        let edge: CGFloat = top ? 10 : 0
+        if hostEdges[0].constant != edge { hostEdges.forEach { $0.animator().constant = edge } }
     }
 
     // MARK: Menu actions
@@ -446,6 +430,14 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         select(index < selected || selected == tabs.count ? selected - 1 : selected)
     }
 
+    /// A tab dragged along the top to another place.
+    private func moveTab(from: Int, to: Int) {
+        let current = tabs[selected]
+        tabs.insert(tabs.remove(at: from), at: to)
+        selected = tabs.firstIndex { $0 === current }!
+        refresh()
+    }
+
     private func select(_ index: Int) {
         let tab = tabs[index]
         if tab.top.superview == nil { show(tab) }
@@ -480,7 +472,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         window.subtitle = [place(of: tab), branch ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
         let titles = tabs.map { $0.focus.session.title ?? "upaa" }
         tabList.show(zip(titles, tabs).map { (title: $0, place: place(of: $1)) }, selected: selected)
-        showStrip(titles)
+        tabStrip.show(zip(tabs, titles).map { (id: ObjectIdentifier($0), title: $1) }, selected: selected)
 
         // A split or a closed pane can change which panes are along the top.
         host.needsLayout = true

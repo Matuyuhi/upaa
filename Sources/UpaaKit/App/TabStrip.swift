@@ -1,0 +1,280 @@
+import AppKit
+
+/// The tabs along the top, in the toolbar while the tab list is hidden (design A3). A tab shows its name, and a close
+/// button while the pointer is on it; dragging a tab moves it among the others, and the middle button closes it. A tab
+/// that opens widens from nothing and one that closes narrows to nothing, and when they do not all fit, they all
+/// narrow, as tabs do in Safari.
+final class TabStrip: NSView {
+    var onSelect: ((Int) -> Void)?
+    var onClose: ((Int) -> Void)?
+    var onMove: ((_ from: Int, _ to: Int) -> Void)?
+    /// The widest the strip may be, from the window's width.
+    var room: CGFloat = 600 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+
+    /// In order, with the closing ones still in their places until they have narrowed.
+    private var tabs: [Tab] = []
+    private var animation: Timer?
+    /// The tab held down: where it was, where the pointer took it, and whether it has moved yet.
+    private var held: (tab: Tab, from: Int, start: CGFloat, offset: CGFloat, moved: Bool)?
+
+    private static let height: CGFloat = 28
+    private static let gap: CGFloat = 2
+    private static let widest: CGFloat = 200
+    private static let narrowest: CGFloat = 44
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    /// The tabs by their owner's identity, so that one that opens, closes or moves is told from the others.
+    func show(_ items: [(id: ObjectIdentifier, title: String)], selected: Int) {
+        let ids = items.map(\.id)
+        for tab in tabs where !ids.contains(tab.id) { tab.target = 0 }
+        var order: [Tab] = items.enumerated().map { index, item in
+            let tab = tabs.first { $0.id == item.id && $0.target == 1 } ?? newTab(item.id)
+            tab.title = item.title
+            tab.isSelected = index == selected
+            return tab
+        }
+        for (index, tab) in tabs.enumerated() where tab.target == 0 {
+            let before = tabs[..<index].last { order.contains($0) }
+            order.insert(tab, at: before.flatMap { order.firstIndex(of: $0) }.map { $0 + 1 } ?? 0)
+        }
+        tabs = order
+        animate()
+    }
+
+    /// Coming into the toolbar, the tabs widen from nothing.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        tabs.forEach { $0.shown = 0 }
+        animate()
+    }
+
+    private func newTab(_ id: ObjectIdentifier) -> Tab {
+        let tab = Tab(id: id)
+        tab.onClose = { [weak self, weak tab] in
+            if let self, let tab, let index = self.open.firstIndex(of: tab) { self.onClose?(index) }
+        }
+        addSubview(tab)
+        return tab
+    }
+
+    /// The tabs that are not closing, which are the owner's tabs in the owner's order.
+    private var open: [Tab] { tabs.filter { $0.target == 1 } }
+
+    /// Moves each tab's width toward where it is going, over Chrome.animation; without a window, at once.
+    private func animate() {
+        guard window != nil else {
+            tabs.forEach { $0.shown = $0.target }
+            return settle()
+        }
+        guard animation == nil else { return }
+        guard tabs.contains(where: { $0.shown != $0.target }) else { return settle() }
+        var last = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            guard let self else { return timer.invalidate() }
+            let now = CACurrentMediaTime()
+            let step = CGFloat((now - last) / Chrome.animation)
+            last = now
+            for tab in self.tabs {
+                tab.shown = tab.target > tab.shown ? min(tab.target, tab.shown + step) : max(tab.target, tab.shown - step)
+            }
+            if self.tabs.allSatisfy({ $0.shown == $0.target }) {
+                timer.invalidate()
+                self.animation = nil
+            }
+            self.settle()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        animation = timer
+    }
+
+    /// Lets the closed tabs go, and sizes and lays out the rest.
+    private func settle() {
+        tabs.removeAll { tab in
+            guard tab.target == 0, tab.shown == 0 else { return false }
+            tab.removeFromSuperview()
+            return true
+        }
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+    }
+
+    /// Each tab's width: its name's, shrunk with the others to fit the room, and eased in or out while it opens or
+    /// closes.
+    private func widths() -> [CGFloat] {
+        let natural = tabs.map { min(Self.widest, $0.naturalWidth) * ease($0.shown) }
+        let total = natural.reduce(0, +) + gaps
+        let fit = total > room ? max(0, room - gaps) / max(1, natural.reduce(0, +)) : 1
+        return zip(natural, tabs).map { max($0 * fit, Self.narrowest * ease($1.shown)) }
+    }
+
+    private var gaps: CGFloat { tabs.dropFirst().map { Self.gap * ease($0.shown) }.reduce(0, +) }
+
+    private func ease(_ t: CGFloat) -> CGFloat { t * t * (3 - 2 * t) }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: min(room, widths().reduce(0, +) + gaps), height: Self.height)
+    }
+
+    override func layout() {
+        super.layout()
+        var x: CGFloat = 0
+        for (index, (tab, width)) in zip(tabs, widths()).enumerated() {
+            if index > 0 { x += Self.gap * ease(tab.shown) }
+            if tab !== held?.tab || held?.moved != true {
+                tab.frame = NSRect(x: x, y: (bounds.height - Self.height) / 2, width: width, height: Self.height)
+            }
+            tab.alphaValue = ease(tab.shown)
+            x += width
+        }
+    }
+
+    // MARK: The pointer
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private func pointer(_ event: NSEvent) -> CGFloat { convert(event.locationInWindow, from: nil).x }
+
+    override func mouseDown(with event: NSEvent) {
+        let x = pointer(event)
+        guard let tab = open.first(where: { $0.frame.minX...$0.frame.maxX ~= x }) else { return }
+        held = (tab, open.firstIndex(of: tab)!, x, x - tab.frame.minX, false)
+    }
+
+    /// The held tab follows the pointer, and the others make room for it where its middle is.
+    override func mouseDragged(with event: NSEvent) {
+        guard var hold = held else { return }
+        let x = pointer(event)
+        guard hold.moved || abs(x - hold.start) > 4 else { return }
+        hold.moved = true
+        held = hold
+        let tab = hold.tab
+        tab.frame.origin.x = min(max(0, x - hold.offset), bounds.width - tab.frame.width)
+        let others = open.filter { $0 !== tab }
+        let place = others.filter { $0.frame.midX < tab.frame.midX }.count
+        guard place != open.firstIndex(of: tab) else { return }
+        tabs.removeAll { $0 === tab }
+        tabs.insert(tab, at: place < others.count ? tabs.firstIndex(of: others[place])! : tabs.count)
+        slide()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let hold = held else { return }
+        held = nil
+        guard hold.moved else {
+            onSelect?(hold.from)
+            return
+        }
+        slide()
+        if let to = open.firstIndex(of: hold.tab), to != hold.from { onMove?(hold.from, to) }
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        let x = pointer(event)
+        if let index = open.firstIndex(where: { $0.frame.minX...$0.frame.maxX ~= x }) { onClose?(index) }
+    }
+
+    /// Moves the tabs to their places as AppKit animates a view's frame.
+    private func slide() {
+        needsLayout = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Chrome.animation
+            context.allowsImplicitAnimation = true
+            layoutSubtreeIfNeeded()
+        }
+    }
+}
+
+/// One tab along the top: its name, and a close button at its left while the pointer is on it.
+private final class Tab: NSView {
+    let id: ObjectIdentifier
+    /// 1 while the tab is open, 0 once it is closing, and how far it has come toward that.
+    var target: CGFloat = 1
+    var shown: CGFloat = 0
+    var onClose: (() -> Void)?
+    var title = "" {
+        didSet { label.stringValue = title }
+    }
+    var isSelected = false {
+        didSet { update() }
+    }
+
+    private let back = Fill(.clear, cornerRadius: 14)
+    private let label = Chrome.label("", size: 12)
+    private let close = NSButton()
+    private var hovering = false {
+        didSet { update() }
+    }
+
+    init(id: ObjectIdentifier) {
+        self.id = id
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        label.lineBreakMode = .byTruncatingTail
+        label.alignment = .center
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "閉じる")?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
+        close.isBordered = false
+        close.contentTintColor = .secondaryLabelColor
+        close.toolTip = "タブを閉じる (⌘W)"
+        close.target = self
+        close.action = #selector(closeTab)
+        for view in [back, label, close] { addSubview(view) }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+        update()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    /// The name's width with room for the close button on each side, so that the name stays in the middle.
+    var naturalWidth: CGFloat { ceil(label.intrinsicContentSize.width) + 44 }
+
+    private func update() {
+        label.font = .systemFont(ofSize: 12, weight: isSelected ? .semibold : .regular)
+        back.color = isSelected ? Chrome.pill : hovering ? Chrome.hover : .clear
+        close.isHidden = !hovering
+    }
+
+    override func layout() {
+        super.layout()
+        back.frame = bounds
+        close.frame = NSRect(x: 6, y: (bounds.height - 16) / 2, width: 16, height: 16)
+        let height = label.intrinsicContentSize.height
+        label.frame = NSRect(x: 22, y: (bounds.height - height) / 2, width: max(0, bounds.width - 44), height: height)
+    }
+
+    /// Everything but the close button goes to the strip, which tells a click from a drag.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        return hit === close ? close : hit == nil ? nil : self
+    }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+
+    override func mouseExited(with event: NSEvent) { hovering = false }
+
+    @objc private func closeTab() { onClose?() }
+}

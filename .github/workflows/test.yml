@@ -98,6 +98,8 @@ jobs:
               conf=default
               osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
             fi
+            # Each launch starts at the config's size, not where the last one left its window.
+            defaults delete local.upaa 2>/dev/null || true
             XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa &
             pid=$!
             sleep 5
