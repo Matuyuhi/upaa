@@ -158,6 +158,25 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The tabs along the top get the window's width less what the traffic lights and the buttons beside them take.
     func windowDidResize(_ notification: Notification) {
         tabStrip.room = max(0, window.frame.width - 300)
+        window.invalidateRestorableState()
+    }
+
+    /// The frame kept for the system's saved window (willEncodeRestorableState) is kept again after a move or a resize.
+    func windowDidMove(_ notification: Notification) {
+        window.invalidateRestorableState()
+    }
+
+    /// The system's saved window comes back at the frame it had when it was made, so the frame is kept here as well
+    /// and put back once the system has restored the window. A full-screen window is left to the system.
+    func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        state.encode(window.frameDescriptor, forKey: "frame")
+    }
+
+    func window(_ window: NSWindow, didDecodeRestorableState state: NSCoder) {
+        guard let frame = state.decodeObject(of: NSString.self, forKey: "frame") else { return }
+        window.setFrame(from: frame as String)
+        Self.keepOnScreen(window)
     }
 
     /// The window's close button and Cmd-Shift-W ask first while a program runs in one of its panes.
@@ -196,8 +215,30 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        Self.saveFrame(of: window)
         timer?.invalidate()
         onClose?()
+    }
+
+    /// The name of the frame that a launch opens its window at when the system brings back none.
+    static let frameName = "upaa"
+
+    /// Keeps where the window is and its size for the next launch, unless it is full screen, which fills its screen.
+    /// The window closed or quit last wins.
+    static func saveFrame(of window: NSWindow) {
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        window.saveFrame(usingName: frameName)
+    }
+
+    /// A window that a frame saved with other screens would leave partly off the screen comes back onto the screen it
+    /// is mostly on, or the main one, made smaller if it does not fit.
+    static func keepOnScreen(_ window: NSWindow) {
+        guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var frame = window.frame
+        frame.size = NSSize(width: min(frame.width, visible.width), height: min(frame.height, visible.height))
+        frame.origin = NSPoint(x: min(max(frame.minX, visible.minX), visible.maxX - frame.width),
+                               y: min(max(frame.minY, visible.minY), visible.maxY - frame.height))
+        if frame != window.frame { window.setFrame(frame, display: false) }
     }
 
     /// The middle of the window: the selected tab, and the footer under it with the shell, the focused pane's size and

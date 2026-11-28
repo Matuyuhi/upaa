@@ -23,19 +23,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var scale: Double { Double(NSScreen.main?.backingScaleFactor ?? 2) }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard case let (window, terminal)? = makeWindow() else {
-            NSLog("upaa: failed to start the terminal")
-            NSApp.terminate(nil)
-            return
+        // The windows open at the last quit are back by now, where they were (restoreWindow), unless the system closes
+        // windows on quit. Otherwise one window opens where the last one used was; the config's size is for the first
+        // launch and for new windows.
+        if windows.isEmpty {
+            guard let window = makeWindow() else {
+                NSLog("upaa: failed to start the terminal")
+                NSApp.terminate(nil)
+                return
+            }
+            if window.setFrameUsingName(TabbedWindow.frameName) { TabbedWindow.keepOnScreen(window) } else { window.center() }
+            window.makeKeyAndOrderFront(nil)
         }
         watchConfig()
-        UpdateCheck.run { [weak terminal] message in terminal?.showNote(message) }
-        // The first window opens where it was last left, at the size it was left; the config's size is for the first
-        // launch and for new windows.
-        window.setFrameAutosaveName("upaa")
-        if !window.setFrameUsingName("upaa") { window.center() }
-        window.makeKeyAndOrderFront(nil)
+        UpdateCheck.run { [weak terminal = terminals.anyObject] message in terminal?.showNote(message) }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let window = NSApp.orderedWindows.first(where: { $0.delegate is TabbedWindow }) { TabbedWindow.saveFrame(of: window) }
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
     }
 
     /// Cmd-Q asks first while a program runs in one of the panes.
@@ -52,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Cmd-N. Opens a window slightly below and to the right of the current one.
     @objc func newWindow(_ sender: Any?) {
-        guard case let (window, _)? = makeWindow() else { return NSSound.beep() }
+        guard let window = makeWindow() else { return NSSound.beep() }
         if let current = NSApp.keyWindow {
             window.setFrameTopLeftPoint(window.cascadeTopLeft(from: NSPoint(x: current.frame.minX, y: current.frame.maxY)))
         } else {
@@ -151,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// A window sized for the config's columns and rows, with one tab.
-    private func makeWindow() -> (NSWindow, TerminalView)? {
+    private func makeWindow() -> NSWindow? {
         guard let terminal = makeTerminal() else { return nil }
         let renderer = terminal.renderer
         let pixels = renderer.pixelSize(cols: config.cols, rows: config.rows)
@@ -161,6 +171,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
+        // The system keeps where it is, to bring it back at the next launch.
+        window.identifier = NSUserInterfaceItemIdentifier("terminal")
+        window.restorationClass = Self.self
         // Make the size change in steps of one cell.
         window.contentResizeIncrements = NSSize(
             width: Double(renderer.cellSize.width) / scale, height: Double(renderer.cellSize.height) / scale)
@@ -178,7 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tabs.onClose = { [weak self, weak tabs] in self?.windows.removeAll { $0 === tabs } }
         tabs.problems = problems
         windows.append(tabs)
-        return (window, terminal)
+        return window
     }
 
     /// A terminal view with its own shell, started in cwd (nil for the home directory).
@@ -200,5 +213,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let view = TerminalView(session: session, renderer: renderer)
         terminals.add(view)
         return view
+    }
+}
+
+extension AppDelegate: NSWindowRestoration {
+    /// The system brings back a window that was open at the last quit: a new window with one tab, which is then put
+    /// where that window was, at its size, and full screen if it was (didDecodeRestorableState).
+    static func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder,
+                              completionHandler: @escaping (NSWindow?, Error?) -> Void) {
+        completionHandler((NSApp.delegate as? AppDelegate)?.makeWindow(), nil)
     }
 }

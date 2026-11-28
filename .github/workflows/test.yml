@@ -173,6 +173,55 @@ jobs:
           kill "$pid"
           wait "$pid" || true
 
+      # Quit with Cmd-Q and launch again, with the system set both ways: to bring back the windows open at the quit, and
+      # to close them, when upaa opens one window where the front one was. Two windows are open, the front one moved and
+      # resized. Fails if a window comes back elsewhere or at another size.
+      - name: Restart
+        env:
+          UPAA_NO_UPDATE_CHECK: "1"
+        run: |
+          dir=build/screenshots
+          # Prints where each window of the given process is and its size, front to back, one per line.
+          cat > "$dir/frames.swift" <<'SWIFT'
+          import CoreGraphics
+          let pid = Int(CommandLine.arguments[1])!
+          let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+          for window in windows where window["kCGWindowOwnerPID"] as? Int == pid && window["kCGWindowLayer"] as? Int == 0 {
+              let bounds = window["kCGWindowBounds"] as? [String: Double] ?? [:]
+              print(["X", "Y", "Width", "Height"].map { String(Int(bounds[$0] ?? -1)) }.joined(separator: " "))
+          }
+          SWIFT
+          failed=
+          for keep in false true; do
+            defaults delete local.upaa 2>/dev/null || true
+            defaults write local.upaa NSQuitAlwaysKeepsWindows -bool "$keep"
+            build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
+            pid=$!
+            sleep 5
+            app="first process whose unix id is $pid"
+            osascript -e "tell application \"System Events\" to set frontmost of ($app) to true" \
+              -e 'tell application "System Events" to keystroke "n" using command down' -e 'delay 1' \
+              -e "tell application \"System Events\" to set position of window 1 of ($app) to {120, 90}" \
+              -e "tell application \"System Events\" to set size of window 1 of ($app) to {900, 560}" || echo "could not open or move a window"
+            sleep 1
+            before="$(swift "$dir/frames.swift" "$pid")"
+            [ "$keep" = true ] || before="$(echo "$before" | head -n 1)"
+            osascript -e "tell application \"System Events\" to set frontmost of ($app) to true" \
+              -e 'tell application "System Events" to keystroke "q" using command down'
+            for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+            kill -0 "$pid" 2>/dev/null && { echo "upaa did not quit on Cmd-Q"; kill "$pid"; exit 1; }
+            build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
+            pid=$!
+            sleep 5
+            after="$(swift "$dir/frames.swift" "$pid")"
+            kill "$pid"
+            wait "$pid" || true
+            printf 'keep windows %s\nbefore the quit:\n%s\nafter the launch:\n%s\n' "$keep" "$before" "$after"
+            [ "$(echo "$before" | sort)" = "$(echo "$after" | sort)" ] || { echo "the windows did not come back as they were"; failed=1; }
+          done
+          defaults delete local.upaa 2>/dev/null || true
+          [ -z "$failed" ]
+
       - name: Keep the launch screenshots
         if: always()
         uses: actions/upload-artifact@v7.0.2
