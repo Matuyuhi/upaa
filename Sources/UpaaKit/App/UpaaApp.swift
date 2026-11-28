@@ -92,6 +92,7 @@ public enum UpaaApp {
         fileItem.submenu = NSMenu(title: String(localized: "File"))
         fileItem.submenu?.addItem(withTitle: String(localized: "New Window"), action: #selector(AppDelegate.newWindow(_:)), keyEquivalent: "n")
         fileItem.submenu?.addItem(withTitle: String(localized: "New Tab"), action: #selector(TabbedWindow.newTab(_:)), keyEquivalent: "t")
+        fileItem.submenu?.addItem(withTitle: String(localized: "Reopen Closed Tab"), action: #selector(TabbedWindow.reopenClosedTab(_:)), keyEquivalent: "T")
         fileItem.submenu?.addItem(withTitle: String(localized: "Split Right"), action: #selector(TabbedWindow.splitRight(_:)), keyEquivalent: "d")
         fileItem.submenu?.addItem(withTitle: String(localized: "Split Down"), action: #selector(TabbedWindow.splitDown(_:)), keyEquivalent: "D")
         fileItem.submenu?.addItem(withTitle: String(localized: "Close"), action: #selector(TabbedWindow.closePane(_:)), keyEquivalent: "w")
