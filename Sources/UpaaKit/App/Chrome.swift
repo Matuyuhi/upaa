@@ -117,12 +117,16 @@ final class Fill: NSView {
     }
 }
 
-/// A Fill that runs an action when clicked (tab items, file rows, toolbar buttons). On, it has the pill color.
+/// A Fill that runs an action when clicked (tab items, file rows, toolbar buttons). On, it has the pill color and a
+/// faint shadow, which keeps the light mode's white pill apart from the light glass.
 final class Clickable: NSView {
     private let fill: Fill
     var onClick: (() -> Void)?
     var isOn: Bool {
-        didSet { fill.color = isOn ? Chrome.pill : .clear }
+        didSet {
+            fill.color = isOn ? Chrome.pill : .clear
+            fill.layer?.shadowOpacity = isOn ? 0.12 : 0
+        }
     }
 
     init(cornerRadius: CGFloat, selected: Bool, _ views: [NSView], spacing: CGFloat = 0, vertical: Bool = false,
@@ -135,6 +139,9 @@ final class Clickable: NSView {
         stack.alignment = vertical ? .leading : .centerY
         stack.spacing = spacing
         stack.edgeInsets = padding
+        fill.layer?.shadowOffset = CGSize(width: 0, height: -1)
+        fill.layer?.shadowRadius = 1.5
+        fill.layer?.shadowOpacity = selected ? 0.12 : 0
         addSubview(fill)
         fill.pin(to: self)
         addSubview(stack)
