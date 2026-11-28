@@ -153,7 +153,8 @@ jobs:
           PROMPT_COMMAND='printf "\e]0;%s\a" "${PWD##*/}"'
           n=$(cat ~/.n 2>/dev/null || echo 0); echo $((n + 1)) > ~/.n
           clear
-          w=$(tput cols); t=$((w - 14))
+          # The first pane narrows when the split or the panel opens, so its lines are kept short enough not to wrap then.
+          w=$(tput cols)
           colors() {
             printf '日本語の表示と入力にも対応しています\n\n'
             for i in 0 1 2 3 4 5 6 7; do printf '\e[4%sm    \e[0m' "$i"; done; echo
@@ -168,11 +169,11 @@ jobs:
             echo
           }
           case "$UPAA_SHOT-$n" in
-            light-0) cd ~/upaa; git log --graph --color --format="%C(yellow)%h%C(reset) %<($t,trunc)%s" -16 ;;
+            light-0) cd ~/upaa; git log --graph --color --format='%C(yellow)%h%C(reset) %<(34,trunc)%s' -16 ;;
             light-1) cd ~/upaa/Sources ;;
             light-2) cd ~/upaa/Shaders ;;
             light-3) cd ~/upaa/core/src; colors; ls ;;
-            dark-0) cd ~/upaa; git status -s; echo; git diff --stat --color; echo; git log --color --format="%C(yellow)%h%C(reset) %<($t,trunc)%s" -8 ;;
+            dark-0) cd ~/upaa; git status -s; echo; git diff --stat --color; echo; git log --color --format='%C(yellow)%h%C(reset) %<(56,trunc)%s' -8 ;;
             dark-1) cd ~/upaa/Sources ;;
           esac
           SH
