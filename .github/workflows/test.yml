@@ -61,6 +61,15 @@ jobs:
           # libghostty-vt 1.0.x and build.zig assume Zig 0.17.x.
           zig version | grep -q '^0\.17\.' || { echo "Zig 0.17.x is required: $(zig version)"; exit 1; }
 
+      # The resize tests run bash and fish from the PATH (core/src/term/Session.zig). macOS has only Apple's /bin/bash,
+      # which upaa leaves as it is, and the tests would be skipped without them.
+      - name: Install bash and fish
+        run: |
+          brew install bash fish
+          [ "$(command -v bash)" != /bin/bash ] || { echo "bash on the PATH is /bin/bash"; exit 1; }
+          bash --version | head -n 1
+          fish --version
+
       - name: Install Metal Toolchain
         run: xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
 

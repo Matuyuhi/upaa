@@ -23,9 +23,9 @@ pub const SpawnError = error{ ForkFailed, NoShell, OutOfMemory };
 
 /// If command is null, starts the user's login shell as a login shell, in start_dir or else the home directory.
 /// If not null, runs /bin/sh -c command in start_dir or else the current directory (for tests and screen dumps).
-/// zsh_dir is the directory with upaa's zsh startup files (Resources/shell-integration/zsh). A login shell that is zsh
-/// starts with ZDOTDIR set to it, and the user's ZDOTDIR in UPAA_ZDOTDIR, which those files put back.
-pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size, zsh_dir: ?[*:0]const u8) SpawnError!Pty {
+/// integration_dir is the directory with upaa's startup files for zsh, bash and fish (Resources/shell-integration).
+/// A login shell that is one of them is pointed at its files there, as integrationFor says.
+pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size, integration_dir: ?[*:0]const u8) SpawnError!Pty {
     // malloc is not allowed between fork and exec, so build the needed strings before fork.
     const path: [*:0]const u8 = if (command == null) loginShell() orelse return error.NoShell else "/bin/sh";
     var argv0_buf: [256]u8 = undefined;
@@ -34,10 +34,15 @@ pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size, zsh
     else
         .{ loginArgv0(path, &argv0_buf), null, null, null };
     const dir: ?[*:0]const u8 = start_dir orelse if (command == null) c.getenv("HOME") else null;
-    const zdotdir = if (command == null and std.mem.eql(u8, std.mem.span(argv[0].?), "-zsh")) zsh_dir else null;
     var arena: std.heap.ArenaAllocator = .init(std.heap.c_allocator);
     defer arena.deinit();
-    const env = try childEnv(arena.allocator(), zdotdir);
+    const integration: ?Integration = if (command == null and integration_dir != null)
+        try integrationFor(arena.allocator(), path, std.mem.span(integration_dir.?))
+    else
+        null;
+    // bash reads the file in ENV only when it starts in POSIX mode.
+    if (integration != null and std.mem.eql(u8, integration.?.name, "ENV")) argv[1] = "--posix";
+    const env = try childEnv(arena.allocator(), integration);
 
     var ws = size.winsize();
     var master: c_int = -1;
@@ -52,32 +57,63 @@ pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size, zsh
     return .{ .master = master, .child = pid };
 }
 
-/// The child's environment: this process's, with TERM set, and with ZDOTDIR set to zdotdir if it is not null, the old
-/// value moved to UPAA_ZDOTDIR. Built before fork, because setenv may allocate.
-fn childEnv(arena: std.mem.Allocator, zdotdir: ?[*:0]const u8) error{OutOfMemory}![:null]?[*:0]const u8 {
+/// The environment variable that points a login shell at upaa's startup files, and its value. The shell's startup
+/// files find the user's own value in UPAA_ and the name, unset if the user had none, and put it back.
+const Integration = struct { name: []const u8, value: [:0]const u8 };
+
+/// zsh reads ZDOTDIR/.zshenv first. bash, started in POSIX mode, reads only the file in ENV; Apple's /bin/bash (3.2)
+/// does not read it there, so it starts as it is, as in Ghostty. fish loads fish/vendor_conf.d from each directory in
+/// XDG_DATA_DIRS, so upaa's goes first, before the user's or else fish's default ones. null for other shells.
+fn integrationFor(arena: std.mem.Allocator, shell: [*:0]const u8, dir: []const u8) error{OutOfMemory}!?Integration {
+    const full = std.mem.span(shell);
+    const base = if (std.mem.lastIndexOfScalar(u8, full, '/')) |i| full[i + 1 ..] else full;
+    if (std.mem.eql(u8, base, "zsh"))
+        return .{ .name = "ZDOTDIR", .value = try std.fmt.allocPrintSentinel(arena, "{s}/zsh", .{dir}, 0) };
+    if (std.mem.eql(u8, base, "bash") and !std.mem.eql(u8, full, "/bin/bash"))
+        return .{ .name = "ENV", .value = try std.fmt.allocPrintSentinel(arena, "{s}/bash/upaa.bash", .{dir}, 0) };
+    if (std.mem.eql(u8, base, "fish")) {
+        const old: ?[*:0]const u8 = c.getenv("XDG_DATA_DIRS");
+        const rest = if (old != null and old.?[0] != 0) std.mem.span(old.?) else "/usr/local/share:/usr/share";
+        return .{ .name = "XDG_DATA_DIRS", .value = try std.fmt.allocPrintSentinel(arena, "{s}:{s}", .{ dir, rest }, 0) };
+    }
+    return null;
+}
+
+/// The child's environment: this process's, with TERM set, and with the integration's variable set if it is not null,
+/// the old value moved to UPAA_ and the name. Built before fork, because setenv may allocate.
+fn childEnv(arena: std.mem.Allocator, integration: ?Integration) error{OutOfMemory}![:null]?[*:0]const u8 {
     const environ: [*:null]?[*:0]const u8 = @ptrCast(c._NSGetEnviron().*);
     const count = std.mem.len(environ);
-    // Room for every entry, TERM, ZDOTDIR and the null at the end.
+    // Room for every entry, TERM, the integration's variable and the null at the end.
     const env = try arena.allocSentinel(?[*:0]const u8, count + 3, null);
     var n: usize = 0;
     for (environ[0..count]) |entry| {
         const s = std.mem.span(entry.?);
         if (std.mem.startsWith(u8, s, "TERM=")) continue;
-        if (zdotdir != null and std.mem.startsWith(u8, s, "UPAA_ZDOTDIR=")) continue;
-        env[n] = if (zdotdir != null and std.mem.startsWith(u8, s, "ZDOTDIR="))
-            (try std.fmt.allocPrintSentinel(arena, "UPAA_{s}", .{s}, 0)).ptr
-        else
-            entry;
+        if (integration) |i| {
+            if (isVariable(s, i.name)) {
+                env[n] = (try std.fmt.allocPrintSentinel(arena, "UPAA_{s}", .{s}, 0)).ptr;
+                n += 1;
+                continue;
+            }
+            if (std.mem.startsWith(u8, s, "UPAA_") and isVariable(s[5..], i.name)) continue;
+        }
+        env[n] = entry;
         n += 1;
     }
     env[n] = "TERM=xterm-256color";
     n += 1;
-    if (zdotdir) |z| {
-        env[n] = (try std.fmt.allocPrintSentinel(arena, "ZDOTDIR={s}", .{z}, 0)).ptr;
+    if (integration) |i| {
+        env[n] = (try std.fmt.allocPrintSentinel(arena, "{s}={s}", .{ i.name, i.value }, 0)).ptr;
         n += 1;
     }
     env[n] = null;
     return env[0..n :null];
+}
+
+/// Whether the environment entry sets the variable.
+fn isVariable(entry: []const u8, name: []const u8) bool {
+    return entry.len > name.len and entry[name.len] == '=' and std.mem.startsWith(u8, entry, name);
 }
 
 pub fn resize(pty: Pty, size: Size) void {
@@ -162,12 +198,20 @@ test "login argv0" {
     try std.testing.expectEqualStrings("-zsh", std.mem.span(loginArgv0("/bin/zsh", &buf)));
 }
 
+test "bash is started with upaa's file, but not Apple's /bin/bash" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const bash = (try integrationFor(arena.allocator(), "/opt/homebrew/bin/bash", "/upaa")).?;
+    try std.testing.expectEqualStrings("/upaa/bash/upaa.bash", bash.value);
+    try std.testing.expect(try integrationFor(arena.allocator(), "/bin/bash", "/upaa") == null);
+}
+
 test "the child's environment sets TERM and ZDOTDIR once each" {
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     var terms: usize = 0;
     var zdotdirs: usize = 0;
-    for (try childEnv(arena.allocator(), "/upaa/zsh")) |entry| {
+    for (try childEnv(arena.allocator(), .{ .name = "ZDOTDIR", .value = "/upaa/zsh" })) |entry| {
         const s = std.mem.span(entry.?);
         if (std.mem.startsWith(u8, s, "TERM=")) {
             try std.testing.expectEqualStrings("TERM=xterm-256color", s);
