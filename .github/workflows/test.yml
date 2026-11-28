@@ -90,12 +90,13 @@ jobs:
           }
           SWIFT
           for name in default config dark; do
-            # dark: no config file, in dark mode for this launch alone (the argument sets the app's own default).
+            # dark: no config file, with the runner switched to dark mode.
+            conf="$name"
             if [ "$name" = dark ]; then
-              XDG_CONFIG_HOME="$PWD/$dir/default" build/upaa.app/Contents/MacOS/upaa -AppleInterfaceStyle Dark &
-            else
-              XDG_CONFIG_HOME="$PWD/$dir/$name" build/upaa.app/Contents/MacOS/upaa &
+              conf=default
+              osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
             fi
+            XDG_CONFIG_HOME="$PWD/$dir/$conf" build/upaa.app/Contents/MacOS/upaa &
             pid=$!
             sleep 5
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
