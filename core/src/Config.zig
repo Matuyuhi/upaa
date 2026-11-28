@@ -2,7 +2,7 @@
 //!
 //! One setting per line, `key = value`. Empty lines and lines starting with `#` are ignored.
 //! The keys and the color syntax are Ghostty's, so lines can be copied from a Ghostty config.
-//! A line that cannot be read keeps the default, and the first such line is reported.
+//! A line that cannot be read keeps the default, and is reported.
 const Config = @This();
 
 const std = @import("std");
@@ -25,8 +25,9 @@ window_height: u16 = 24,
 foreground: ?vt.GhosttyColorRgb = null,
 background: ?vt.GhosttyColorRgb = null,
 palette: [256]?vt.GhosttyColorRgb = @splat(null),
-/// NUL-terminated ASCII, empty if every line was read.
-problem: [80]u8 = @splat(0),
+/// The lines that could not be read, one per line, as many as fit. NUL-terminated ASCII, empty if every line was read.
+/// The last byte is never written.
+problems: [1024]u8 = @splat(0),
 
 /// What the Swift side reads. Same layout as UpaaConfigValues in Sources/CUpaaCore. The pointers live as long as the Config.
 pub const Values = extern struct {
@@ -35,8 +36,8 @@ pub const Values = extern struct {
     background_opacity: f64,
     window_width: u16,
     window_height: u16,
-    /// The first line that could not be read, or null.
-    problem: ?[*:0]const u8,
+    /// The lines that could not be read, one per line, or null.
+    problems: ?[*:0]const u8,
 };
 
 pub fn parse(text: []const u8) Config {
@@ -68,7 +69,7 @@ pub fn values(config: *const Config) Values {
         .background_opacity = config.background_opacity,
         .window_width = config.window_width,
         .window_height = config.window_height,
-        .problem = if (config.problem[0] == 0) null else config.problem[0 .. config.problem.len - 1 :0].ptr,
+        .problems = if (config.problems[0] == 0) null else config.problems[0 .. config.problems.len - 1 :0].ptr,
     };
 }
 
@@ -169,8 +170,12 @@ fn unquote(value: []const u8) []const u8 {
 }
 
 fn fail(config: *Config, line: usize, reason: []const u8) void {
-    if (config.problem[0] != 0) return;
-    _ = std.fmt.bufPrint(config.problem[0 .. config.problem.len - 1], "config line {d}: {s}", .{ line, reason }) catch {};
+    const end = std.mem.indexOfScalar(u8, &config.problems, 0).?;
+    const start = if (end == 0) 0 else end + 1;
+    if (start >= config.problems.len - 1) return;
+    const out = config.problems[start .. config.problems.len - 1];
+    _ = std.fmt.bufPrint(out, "config line {d}: {s}", .{ line, reason }) catch return @memset(out, 0);
+    if (end != 0) config.problems[end] = '\n';
 }
 
 fn fixed(comptime text: []const u8) [513]u8 {
@@ -187,10 +192,10 @@ test "defaults" {
     try std.testing.expectEqual(@as(f64, 0.8), v.background_opacity);
     try std.testing.expectEqual(@as(u16, 80), v.window_width);
     try std.testing.expectEqual(@as(u16, 24), v.window_height);
-    try std.testing.expect(v.problem == null);
+    try std.testing.expect(v.problems == null);
 }
 
-test "settings, and the first line that cannot be read" {
+test "settings, and the lines that cannot be read" {
     const config = parse(
         \\# comment
         \\font-family = "JetBrains Mono"
@@ -213,11 +218,17 @@ test "settings, and the first line that cannot be read" {
     try std.testing.expectEqual(vt.GhosttyColorRgb{ .r = 0x1e, .g = 0x1e, .b = 0x2e }, config.background.?);
     try std.testing.expectEqual(vt.GhosttyColorRgb{ .r = 0xff, .g = 0, .b = 0 }, config.palette[1].?);
     try std.testing.expect(config.palette[2] == null);
-    try std.testing.expectEqualStrings("config line 10: unknown key", std.mem.span(v.problem.?));
+    try std.testing.expectEqualStrings("config line 10: unknown key\nconfig line 11: invalid value", std.mem.span(v.problems.?));
 
     const bad = parse("window-width = 3\nwindow-width = 120\nno equals sign");
     try std.testing.expectEqual(@as(u16, 120), bad.window_width);
-    try std.testing.expectEqualStrings("config line 1: invalid value", std.mem.span(bad.values().problem.?));
+    try std.testing.expectEqualStrings("config line 1: invalid value\nconfig line 3: expected key = value", std.mem.span(bad.values().problems.?));
+
+    // Lines past what fits are left out, and no line is cut.
+    const many = parse("x\n" ** 100);
+    const listed = std.mem.span(many.values().problems.?);
+    try std.testing.expect(std.mem.endsWith(u8, listed, ": expected key = value"));
+    try std.testing.expect(listed.len < many.problems.len);
 }
 
 test "each font-family line after the first adds a fallback, and an empty one starts again" {

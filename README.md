@@ -77,7 +77,7 @@ background-opacity = 0.8
 palette = 1=#f38ba8
 ```
 
-Colors are `#rrggbb`, `#rgb` or an X11 name. Without `foreground`, `background` and palette 2 to 5, the colors follow light and dark mode. A line that cannot be read keeps the default, and the first one is shown in the window. Changes take effect the next time upaa starts.
+Colors are `#rrggbb`, `#rgb` or an X11 name. Without `foreground`, `background` and palette 2 to 5, the colors follow light and dark mode. A line that cannot be read keeps the default, and is shown at the bottom of the window and in Settings until the file is fixed. Changes take effect when the file is saved, except the window size, which is for new windows.
 
 ## Development
 

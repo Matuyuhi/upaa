@@ -17,6 +17,11 @@ enum Chrome {
     static let pressed = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.2) : NSColor(white: 0, alpha: 0.11) }
     /// How long a row's change of color takes.
     static let animation: TimeInterval = 0.2
+    /// Something in the config that could not be used (the design's orange).
+    static let warning = NSColor(name: nil) {
+        $0.isDark ? NSColor(srgbRed: 1, green: 0x9f / 255, blue: 0x0a / 255, alpha: 1)
+            : NSColor(srgbRed: 0xc4 / 255, green: 0x55 / 255, blue: 0, alpha: 1)
+    }
     static let addedLine = NSColor.systemGreen.withAlphaComponent(0.18)
     static let removedLine = NSColor.systemRed.withAlphaComponent(0.16)
 
