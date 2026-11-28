@@ -23,7 +23,9 @@ pub const SpawnError = error{ ForkFailed, NoShell };
 
 /// If command is null, starts the user's login shell as a login shell, in start_dir or else the home directory.
 /// If not null, runs /bin/sh -c command in start_dir or else the current directory (for tests and screen dumps).
-pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size) SpawnError!Pty {
+/// zsh_dir is the directory with upaa's zsh startup files (Resources/shell-integration/zsh). A login shell that is zsh
+/// starts with ZDOTDIR set to it, and the user's ZDOTDIR in UPAA_ZDOTDIR, which those files put back.
+pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size, zsh_dir: ?[*:0]const u8) SpawnError!Pty {
     // malloc is not allowed between fork and exec, so build the needed strings before fork.
     const path: [*:0]const u8 = if (command == null) loginShell() orelse return error.NoShell else "/bin/sh";
     var argv0_buf: [256]u8 = undefined;
@@ -32,6 +34,7 @@ pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size) Spa
     else
         .{ loginArgv0(path, &argv0_buf), null, null, null };
     const dir: ?[*:0]const u8 = start_dir orelse if (command == null) c.getenv("HOME") else null;
+    const zdotdir = if (command == null and std.mem.eql(u8, std.mem.span(argv[0].?), "-zsh")) zsh_dir else null;
 
     var ws = size.winsize();
     var master: c_int = -1;
@@ -41,6 +44,10 @@ pub fn spawn(command: ?[*:0]const u8, start_dir: ?[*:0]const u8, size: Size) Spa
         // Child process. From here to exec, call only async-signal-safe functions.
         if (dir) |d| _ = c.chdir(d);
         _ = c.setenv("TERM", "xterm-256color", 1);
+        if (zdotdir) |z| {
+            if (c.getenv("ZDOTDIR")) |old| _ = c.setenv("UPAA_ZDOTDIR", old, 1);
+            _ = c.setenv("ZDOTDIR", z, 1);
+        }
         _ = c.execv(path, @ptrCast(&argv));
         c._exit(127);
     }

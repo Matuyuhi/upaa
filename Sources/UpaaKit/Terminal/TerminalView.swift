@@ -19,6 +19,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
     private var mascotTimer: Timer?
     /// A redraw is waiting to run after the current event.
     private var redrawQueued = false
+    /// A grid resize is waiting to follow the drawable's size.
+    private var resizeQueued = false
     /// This view took the keyboard (a click on it, or the window choosing it).
     var onFocus: (() -> Void)?
     /// The grid changed size.
@@ -65,7 +67,18 @@ final class TerminalView: MTKView, MTKViewDelegate {
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         // The drawable needs a frame at its new size even when the grid stays the same.
         redraw()
-        let (cols, rows) = renderer.gridSize(for: (Int(size.width), Int(size.height)))
+        // Dragging the sidebar or the window changes the size every frame. Each grid change tells the shell (SIGWINCH),
+        // and a shell still drawing its prompt for the last width would leave it rewrapped at the new one (#59). So the
+        // grid follows at most every 25 ms, with the size of that moment, as in Ghostty.
+        // (A main-queue block rather than a Timer, since it also runs while the drag tracks the mouse.)
+        guard !resizeQueued else { return }
+        resizeQueued = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) { [weak self] in self?.resizeGrid() }
+    }
+
+    private func resizeGrid() {
+        resizeQueued = false
+        let (cols, rows) = renderer.gridSize(for: (Int(drawableSize.width), Int(drawableSize.height)))
         guard (cols, rows) != gridSize else { return }
         gridSize = (cols, rows)
         session.resize(

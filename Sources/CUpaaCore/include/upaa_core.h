@@ -52,9 +52,10 @@ typedef struct {
 } UpaaSessionCallbacks;
 
 // If command is NULL, starts the login shell; otherwise starts /bin/sh -c command. cwd NULL starts in the home
-// directory (login shell) or the current one (command). Returns NULL on failure.
+// directory (login shell) or the current one (command). zsh_dir is the directory with upaa's zsh startup files
+// (Resources/shell-integration/zsh), used when the login shell is zsh; NULL starts zsh as it is. Returns NULL on failure.
 // The colors are libghostty-vt's until upaa_session_set_colors.
-UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const char *cwd,
+UpaaSession *upaa_session_new(uint16_t cols, uint16_t rows, const char *command, const char *cwd, const char *zsh_dir,
                               const UpaaSessionCallbacks *callbacks);
 // Sets the default colors for light or dark mode: config's, and design A3's where it names none (config NULL: all A3's).
 // config can be freed afterwards.
