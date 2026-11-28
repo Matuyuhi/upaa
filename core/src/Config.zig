@@ -225,7 +225,9 @@ test "settings, and the lines that cannot be read" {
     try std.testing.expectEqualStrings("config line 1: invalid value\nconfig line 3: expected key = value", std.mem.span(bad.values().problems.?));
 
     // Lines past what fits are left out, and no line is cut.
-    const many = parse("x\n" ** 100);
+    var text: [200]u8 = undefined;
+    for (&text, 0..) |*byte, i| byte.* = if (i % 2 == 0) 'x' else '\n';
+    const many = parse(&text);
     const listed = std.mem.span(many.values().problems.?);
     try std.testing.expect(std.mem.endsWith(u8, listed, ": expected key = value"));
     try std.testing.expect(listed.len < many.problems.len);
