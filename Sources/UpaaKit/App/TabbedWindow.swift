@@ -144,6 +144,13 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The tabs along the top get the window's width less what the traffic lights and the buttons beside them take.
     func windowDidResize(_ notification: Notification) {
         tabStrip.room = max(0, window.frame.width - 300)
+        window.invalidateRestorableState()
+    }
+
+    /// The system's saved windows (restoreWindow) learn of a move or a resize only when told; otherwise a window comes
+    /// back where it was made.
+    func windowDidMove(_ notification: Notification) {
+        window.invalidateRestorableState()
     }
 
     /// The window's close button and Cmd-Shift-W ask first while a program runs in one of its panes.
