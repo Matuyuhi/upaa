@@ -34,6 +34,8 @@ mkdir -p "$APP/Contents/Resources/bin"
 cp LICENSE THIRD_PARTY_LICENSES.md Resources/upaa.icns "$APP/Contents/Resources/"
 # The Japanese text. English is the text in the code, so it needs no file (Info.plist lists both languages).
 cp -R Resources/*.lproj "$APP/Contents/Resources/"
+# zsh's startup files, read before the user's when the login shell is zsh (Pty.spawn).
+cp -R Resources/shell-integration "$APP/Contents/Resources/"
 cp scripts/upaa-launcher.sh "$APP/Contents/Resources/bin/upaa"
 chmod +x "$APP/Contents/Resources/bin/upaa"
 
