@@ -163,7 +163,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         watch(first)
         tabs.append(Tab(first))
         select(0)
-        // The tabs follow the shells' directories and programs, and the panel the files, without a signal from any.
+        // The tabs follow the shells' directories and programs, and the panel the files and links, without a signal from any.
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             self?.refresh()
             self?.readPanels()
