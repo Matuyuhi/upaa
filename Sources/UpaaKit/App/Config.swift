@@ -31,9 +31,11 @@ final class Config {
         rows = Int(values.window_height)
         problems = UnsafeBufferPointer(start: values.problems, count: values.problem_count).map { problem in
             let line = Int(problem.line)
+            let start = Int(problem.key_start), end = start + Int(problem.key_len)
+            let key = end <= bytes.count ? String(decoding: bytes[start..<end], as: UTF8.self) : ""
             switch Int(problem.kind) {
-            case UPAA_CONFIG_UNKNOWN_KEY: return String(localized: "config line \(line): unknown key")
-            case UPAA_CONFIG_INVALID_VALUE: return String(localized: "config line \(line): invalid value")
+            case UPAA_CONFIG_UNKNOWN_KEY: return String(localized: "config line \(line): unknown key \"\(key)\"")
+            case UPAA_CONFIG_INVALID_VALUE: return String(localized: "config line \(line): invalid value for \"\(key)\"")
             default: return String(localized: "config line \(line): expected key = value")
             }
         }

@@ -18,6 +18,9 @@ typedef struct UpaaConfig UpaaConfig;
 // A line that could not be read. The app words it, in the user's language.
 typedef struct {
     uint32_t line;
+    // Where the line's key is in the text passed to upaa_config_new, in bytes. Empty for UPAA_CONFIG_NOT_KEY_VALUE.
+    uint32_t key_start;
+    uint32_t key_len;
     uint8_t kind;
 } UpaaConfigProblem;
 enum { UPAA_CONFIG_NOT_KEY_VALUE = 0, UPAA_CONFIG_UNKNOWN_KEY = 1, UPAA_CONFIG_INVALID_VALUE = 2 };
