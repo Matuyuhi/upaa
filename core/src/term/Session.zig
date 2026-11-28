@@ -578,35 +578,43 @@ test "resize is visible to the child" {
 test "a zsh prompt that fills the width is drawn once after the width changes, as upaa's startup files mark it (#59)" {
     // Without the marks the terminal rewraps the old prompt and zsh redraws below what is left of it. Checking that
     // shows the test reproduces the bug.
-    try std.testing.expect(try promptsAfterResizes("ZDOTDIR=\"$PWD/tests/zsh\" exec zsh -i") > 1);
-    try std.testing.expectEqual(@as(usize, 1), try promptsAfterResizes(
+    try std.testing.expect(try promptsLeftByResizes("ZDOTDIR=\"$PWD/tests/zsh\" exec zsh -i") > 0);
+    try std.testing.expectEqual(@as(usize, 0), try promptsLeftByResizes(
         "UPAA_ZDOTDIR=\"$PWD/tests/zsh\" ZDOTDIR=\"$PWD/Resources/shell-integration/zsh\" exec zsh -i",
     ));
 }
 
-/// Starts zsh with the test prompt (tests/zsh/.zshrc), changes the width a few times, and counts the prompts on screen.
-fn promptsAfterResizes(command: [*:0]const u8) !usize {
+/// Starts zsh with the test prompt (tests/zsh/.zshrc), runs a command, changes the width a few times, and returns how
+/// many more prompts are on screen than before the changes.
+fn promptsLeftByResizes(command: [*:0]const u8) !usize {
     const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = command });
     defer self.destroy();
     var out: [8192]u8 = undefined;
     try self.waitForPrompt(80, &out);
 
-    // From the second prompt on, the marks come from PS1, which is how they are drawn again on each redraw.
-    // The marker is computed, so the typed command is not mistaken for its output.
-    self.write("clear; echo cleared-$((40+2))\n");
-    try self.waitForText("cleared-42", &out);
-    try self.waitForPrompt(80, &out);
+    // From the second prompt on, the marks come from PS1, which is how they are drawn again on each redraw. The first
+    // prompt stays above, as an earlier prompt does, and is rewrapped like any other line. (A clear would leave it in
+    // the scrollback, where a resize can bring it back.) The output is computed, so the typed command is not taken for
+    // it.
+    self.write("echo done-$((40+2))\n");
+    try self.waitForText("done-42", &out);
+    var tries: usize = 0;
+    while (try self.countPrompts(&out) < 2) : (tries += 1) {
+        if (tries == 500) return error.Timeout;
+        _ = c.usleep(10 * 1000);
+    }
 
-    for ([_]u16{ 50, 70, 40, 80 }) |cols| {
+    // The last width is not 80, where the first prompt alone would match waitForPrompt.
+    for ([_]u16{ 50, 70, 40, 60 }) |cols| {
         self.resize(.{ .cols = cols, .rows = 24 }, 8, 16);
         try self.waitForPrompt(cols, &out);
-        // TEMP diagnostics for #59, removed before merge.
-        _ = c.usleep(100 * 1000);
-        const m = self.plainText(&out) orelse 0;
-        std.debug.print("\n=== {s} cols={d}\n{s}\n===\n", .{ command, cols, out[0..@min(m, out.len)] });
     }
     _ = c.usleep(200 * 1000);
-    const n = self.plainText(&out) orelse return error.FormatFailed;
+    return try self.countPrompts(&out) -| 2;
+}
+
+fn countPrompts(self: *Session, out: []u8) !usize {
+    const n = self.plainText(out) orelse return error.FormatFailed;
     return std.mem.count(u8, out[0..@min(n, out.len)], "left");
 }
 
