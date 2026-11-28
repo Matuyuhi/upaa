@@ -87,7 +87,13 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
             guard let self, index != self.selected else { return }
             self.select(index)
         }
-        tabStrip.onClose = { [weak self] in self?.closeTab(at: $0) }
+        tabStrip.onClose = { [weak self] index in
+            guard let self else { return }
+            let tab = self.tabs[index]
+            self.ask("このタブを閉じますか？", about: tab.panes) { [weak self] in
+                if let self, let index = self.tabs.firstIndex(where: { $0 === tab }) { self.closeTab(at: index) }
+            }
+        }
         tabStrip.onMove = { [weak self] in self?.moveTab(from: $0, to: $1) }
         tabList.onClose = tabStrip.onClose
         tabList.onMove = tabStrip.onMove
@@ -138,6 +144,41 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The tabs along the top get the window's width less what the traffic lights and the buttons beside them take.
     func windowDidResize(_ notification: Notification) {
         tabStrip.room = max(0, window.frame.width - 300)
+    }
+
+    /// The window's close button and Cmd-Shift-W ask first while a program runs in one of its panes.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard running.isEmpty else {
+            ask("このウィンドウを閉じますか？", about: tabs.flatMap(\.panes)) { [weak self] in self?.window.close() }
+            return false
+        }
+        return true
+    }
+
+    /// The programs running in the panes, other than their shells.
+    var running: [String] { tabs.flatMap(\.panes).compactMap(\.session.running) }
+
+    /// Does then at once when no pane among panes runs a program other than its shell; otherwise asks first, in a
+    /// sheet, as Terminal does, since closing ends those programs.
+    private func ask(_ question: String, about panes: [TerminalView], then: @escaping () -> Void) {
+        let running = panes.compactMap(\.session.running)
+        guard !running.isEmpty else { return then() }
+        Self.alert(question, button: "閉じる", running: running).beginSheetModal(for: window) {
+            if $0 == .alertFirstButtonReturn { then() }
+        }
+    }
+
+    /// Asks whether to end the programs named, with the button that does it and Cancel.
+    static func alert(_ question: String, button: String, running: [String]) -> NSAlert {
+        let names = running.filter { !$0.isEmpty }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        let alert = NSAlert()
+        alert.messageText = question
+        alert.informativeText = names.isEmpty
+            ? "実行中のプログラムがあります。閉じると終了します。"
+            : "\(names.joined(separator: "、")) が実行中です。閉じると終了します。"
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "キャンセル")
+        return alert
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -288,9 +329,10 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         select(selected + 1)
     }
 
-    /// Closes the focused pane, and the tab with its last pane.
+    /// Closes the focused pane, and the tab with its last pane, asking first while it runs a program.
     @objc func closePane(_ sender: Any?) {
-        close(tabs[selected].focus)
+        let pane = tabs[selected].focus
+        ask("このペインを閉じますか？", about: [pane]) { [weak self] in self?.close(pane) }
     }
 
     /// Puts a new pane to the right of the focused one.

@@ -135,6 +135,9 @@ void upaa_session_resize(UpaaSession *session, uint16_t cols, uint16_t rows, uin
 bool upaa_session_take_dirty(UpaaSession *session);
 // The shell's current directory, read from the kernel. Returns its length; 0 if unknown or longer than cap.
 size_t upaa_session_cwd(UpaaSession *session, uint8_t *out, size_t cap);
+// The program in the terminal's foreground when it is not the shell. Returns its name's length (0 if the name cannot be
+// read), -1 while the shell has the terminal.
+ptrdiff_t upaa_session_running(UpaaSession *session, uint8_t *out, size_t cap);
 // The title the program set (UTF-8). Returns the full length (0 if none); anything beyond cap is truncated.
 size_t upaa_session_title(UpaaSession *session, uint8_t *out, size_t cap);
 // Plain text of the screen. The return value is the original length; anything beyond cap is truncated. -1 on failure.

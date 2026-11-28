@@ -77,6 +77,15 @@ pub fn cwd(pty: Pty, out: []u8) ?[]const u8 {
     return out[0..path.len];
 }
 
+/// The name of the program in the terminal's foreground when it is not the shell (a command the shell started), copied
+/// into out; "" when its name cannot be read. null while the shell itself has the terminal.
+pub fn running(pty: Pty, out: []u8) ?[]const u8 {
+    const group = c.tcgetpgrp(pty.master);
+    if (group <= 0 or group == pty.child) return null;
+    const n = c.proc_name(group, out.ptr, @intCast(out.len));
+    return out[0..@intCast(@max(n, 0))];
+}
+
 /// Terminates the child process, reaps it, and closes the fd.
 pub fn deinit(pty: Pty) void {
     _ = c.kill(pty.child, c.SIGHUP);

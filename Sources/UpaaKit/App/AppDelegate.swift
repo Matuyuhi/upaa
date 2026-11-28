@@ -26,6 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Cmd-Q asks first while a program runs in one of the panes.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let running = windows.flatMap(\.running)
+        guard !running.isEmpty else { return .terminateNow }
+        let alert = TabbedWindow.alert("upaaを終了しますか？", button: "終了", running: running)
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }

@@ -263,6 +263,11 @@ pub fn cwd(self: *Session, out: []u8) usize {
     return (self.pty.cwd(out) orelse return 0).len;
 }
 
+/// The program running in the foreground other than the shell, as Pty.running. Returns its name's length, -1 if none.
+pub fn running(self: *Session, out: []u8) isize {
+    return @intCast((self.pty.running(out) orelse return -1).len);
+}
+
 /// The title the program set (UTF-8), copied into out. Returns the full length; 0 if none was set.
 pub fn title(self: *Session, out: []u8) usize {
     self.lock();
@@ -566,6 +571,21 @@ test "resize is visible to the child" {
     self.write("stty size\n");
     var out: [4096]u8 = undefined;
     try self.waitForText("30 100", &out);
+}
+
+test "a program the shell runs in the foreground is told from the shell" {
+    const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = "/bin/sh" });
+    defer self.destroy();
+    self.write("sleep 5\n");
+    var name: [64]u8 = undefined;
+    var n: isize = -1;
+    var tries: usize = 0;
+    while (tries < 50) : (tries += 1) {
+        n = self.running(&name);
+        if (n > 0 and std.mem.eql(u8, name[0..@intCast(n)], "sleep")) break;
+        _ = c.usleep(100 * 1000);
+    }
+    try std.testing.expectEqualStrings("sleep", name[0..@intCast(@max(n, 0))]);
 }
 
 fn typeText(self: *Session, text: []const u8) void {
