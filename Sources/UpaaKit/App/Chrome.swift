@@ -25,6 +25,28 @@ enum Chrome {
     static let addedLine = NSColor.systemGreen.withAlphaComponent(0.18)
     static let removedLine = NSColor.systemRed.withAlphaComponent(0.16)
 
+    /// A scroll view of the right panel's rows, which scrolls up and down only. A flipped document view keeps the rows
+    /// at the top.
+    static func scroller(_ rows: NSStackView) -> NSScrollView {
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 0
+        rows.edgeInsets = NSEdgeInsets(top: 12, left: 8, bottom: 8, right: 8)
+        let document = FlippedView()
+        document.addSubview(rows)
+        rows.pin(to: document)
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.documentView = document
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
+        document.topAnchor.constraint(equalTo: scroll.contentView.topAnchor).isActive = true
+        document.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor).isActive = true
+        return scroll
+    }
+
     static func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, mono: Bool = false,
                       color: NSColor = .labelColor) -> NSTextField {
         let label = NSTextField(labelWithString: text)
@@ -34,6 +56,10 @@ enum Chrome {
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
     }
+}
+
+private final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 extension NSAppearance {
