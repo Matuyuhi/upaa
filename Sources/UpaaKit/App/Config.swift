@@ -15,7 +15,7 @@ final class Config {
     /// Cells.
     let cols: Int
     let rows: Int
-    /// The lines that could not be read, as Zig words them.
+    /// The lines that could not be read, in the user's language.
     let problems: [String]
 
     /// With no text, every setting is the default. Snapshots use this, so the baseline images do not depend on the user's file.
@@ -29,7 +29,14 @@ final class Config {
         backgroundOpacity = values.background_opacity
         cols = Int(values.window_width)
         rows = Int(values.window_height)
-        problems = values.problems.map { String(cString: $0).components(separatedBy: "\n") } ?? []
+        problems = UnsafeBufferPointer(start: values.problems, count: values.problem_count).map { problem in
+            let line = Int(problem.line)
+            switch Int(problem.kind) {
+            case UPAA_CONFIG_UNKNOWN_KEY: return String(localized: "config line \(line): unknown key")
+            case UPAA_CONFIG_INVALID_VALUE: return String(localized: "config line \(line): invalid value")
+            default: return String(localized: "config line \(line): expected key = value")
+            }
+        }
     }
 
     deinit {
