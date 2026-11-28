@@ -108,6 +108,59 @@ jobs:
             wait "$pid" || true
           done
 
+      # TEMPORARY: pictures for the README, taken with a few tabs, a split and the changes panel open. Removed before merging.
+      - name: README screenshots (temporary)
+        env:
+          UPAA_NO_UPDATE_CHECK: "1"
+        run: |
+          git fetch -q --unshallow origin main:refs/remotes/origin/main || git fetch -q origin main:refs/remotes/origin/main
+          main="$(git rev-parse origin/main)"
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+          root="$PWD/build/readme"
+          mkdir -p "$root/light/upaa" "$root/dark/upaa"
+          printf '%s\n' 'window-width = 104' 'window-height = 28' > "$root/light/upaa/config"
+          printf '%s\n' 'window-width = 104' 'window-height = 28' 'foreground = #cdd6f4' 'background = #1e1e2e' > "$root/dark/upaa/config"
+          key() { osascript -e "tell application \"System Events\" to keystroke \"$1\" using command down"; sleep 1.5; }
+          for name in light dark; do
+            home="$root/home-$name"
+            mkdir -p "$home"
+            git clone -q "$PWD" "$home/upaa"
+            git -C "$home/upaa" checkout -q --detach "$main"
+            # The README change makes the changes panel show a diff.
+            sed -i '' 's/^Not yet: search, and the list of links a session printed\./Not yet: search./' "$home/upaa/README.md"
+            cat > "$home/.bash_profile" <<'SH'
+          export BASH_SILENCE_DEPRECATION_WARNING=1 CLICOLOR=1 LSCOLORS=ExGxFxdaCxDaDahbadacec
+          PS1='\[\e[1;34m\]\W\[\e[0m\] \[\e[35m\]❯\[\e[0m\] '
+          PROMPT_COMMAND='printf "\e]0;%s\a" "${PWD##*/}"'
+          n=$(cat ~/.n 2>/dev/null || echo 0); echo $((n + 1)) > ~/.n
+          clear
+          case "$UPAA_SHOT-$n" in
+            light-0) cd ~/upaa; git log --graph --oneline --color -16 ;;
+            light-1) cd ~/upaa/Sources ;;
+            light-2) cd ~/upaa/Shaders ;;
+            light-3) cd ~/upaa/core/src; ls; echo; echo '日本語も 2 セル幅で表示できます' ;;
+            dark-0) cd ~/upaa; git status -s; echo; git diff --stat --color ;;
+            dark-1) cd ~/upaa/Sources ;;
+          esac
+          SH
+            if [ "$name" = dark ]; then osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'; fi
+            UPAA_SHOT=$name HOME="$home" XDG_CONFIG_HOME="$root/$name" build/upaa.app/Contents/MacOS/upaa &
+            pid=$!
+            sleep 5
+            osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" || true
+            sleep 1
+            if [ "$name" = light ]; then
+              key t; key t; key 1; key d
+            else
+              key t; key 1; key j
+            fi
+            sleep 2
+            id="$(swift build/screenshots/window.swift "$pid")"
+            screencapture -x -o -l "$id" "build/screenshots/readme-$name.png" || true
+            kill "$pid"; wait "$pid" || true
+          done
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+
       - name: Keep the launch screenshots
         if: always()
         uses: actions/upload-artifact@v7.0.2
