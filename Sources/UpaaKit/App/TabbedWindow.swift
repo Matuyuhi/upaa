@@ -97,8 +97,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         }
         changes.onUpdate = { [weak self] branch, count in
             guard let self else { return }
-            // A mark on the right panel's button that the focused pane's repository has changes.
-            if #available(macOS 14.0, *) {
+            // A mark on the right panel's button that the focused pane's repository has changes (macOS 26 and later).
+            if #available(macOS 26.0, *) {
                 let item = self.window.toolbar?.items.first { $0.itemIdentifier == Self.panelButton }
                 item?.badge = count > 0 ? .count(count) : nil
             }
