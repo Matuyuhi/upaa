@@ -3,8 +3,8 @@ import AppKit
 /// One window with tabs, laid out as design A3. A tab is one terminal, or split views with terminals (panes) at their
 /// ends. Each pane has its own shell, and a tab is named after the title its focused pane's program set.
 /// With the tabs down the left side, the window's ground is a color gradient, as in Arc, with the tab list on it and the
-/// terminal as a rounded card. With the tabs at the top (Cmd-B), the terminal fills the window and the tabs and tools
-/// float over it in glass capsules, its text starting below them. The right panel
+/// terminal as a rounded card. With the tabs at the top (Cmd-B), the terminal fills the window. Either way the title or
+/// tabs and the tools float over the terminal's top in glass capsules, its text starting below them. The right panel
 /// (Cmd-J) shows the changed files of the focused pane's git repository: down the side it takes room from the
 /// terminal, with the tabs at the top it floats over the terminal as a card.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
@@ -51,6 +51,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     private let titleLabel = Chrome.label("", size: 13, weight: .semibold)
     private let branchLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
     private let branchCapsule = Fill(Chrome.pill, cornerRadius: 9)
+    /// The tab's name and branch, floating over the terminal when the tabs are down the side.
+    private let titleCapsule = GlassPanel(cornerRadius: 17)
     private let changesLabel: NSTextField
     private let changesButton: Clickable
     private let shellButton: Clickable
@@ -83,7 +85,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         window.delegate = self
         window.setContentSize(NSSize(
             width: terminalSize.width + 3 * Chrome.inset + Chrome.tabPanelWidth,
-            height: terminalSize.height + Chrome.headerHeight + Chrome.inset))
+            height: terminalSize.height + 2 * Chrome.inset + Chrome.headerHeight + 4))
         for view in [host, tabPanel, header, sidePanel] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             ground.addSubview(view)
@@ -148,6 +150,12 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         label.edgeInsets = NSEdgeInsets(top: 1, left: 8, bottom: 1, right: 8)
         branchCapsule.addSubview(label)
         label.pin(to: branchCapsule)
+        let title = NSStackView(views: [titleLabel, branchCapsule])
+        title.spacing = 8
+        title.edgeInsets = NSEdgeInsets(top: 3, left: 14, bottom: 3, right: 6)
+        title.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        titleCapsule.content.addSubview(title)
+        title.pin(to: titleCapsule.content)
 
         let hide = NSButton(image: NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: "右パネル")!,
                             target: self, action: #selector(toggleSidePanel(_:)))
@@ -173,7 +181,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
 
         let space = NSView()
         space.setContentHuggingPriority(.init(1), for: .horizontal)
-        for view in [tabCapsule, titleLabel, branchCapsule, space, toolbar] as [NSView] { header.addArrangedSubview(view) }
+        for view in [tabCapsule, titleCapsule, space, toolbar] as [NSView] { header.addArrangedSubview(view) }
         header.spacing = 8
     }
 
@@ -427,12 +435,12 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     private func arrange(sidePanel shown: Bool) {
         arranged = (vertical, shown)
         tabPanel.isHidden = !vertical
-        // Down the side the terminal is a card on the backdrop. With the tabs at the top it fills the window, and the
-        // glass header floats over it, so its text starts below the header.
+        // The glass header floats over the terminal, whose text starts below it. Down the side the terminal is a card on
+        // the backdrop, and the header sits inside its top; with the tabs at the top the terminal fills the window.
         host.layer?.cornerRadius = vertical ? Chrome.terminalCornerRadius : 0
-        host.topInset = vertical ? 0 : Chrome.inset + Chrome.headerHeight + 4
+        host.topInset = (vertical ? 0 : Chrome.inset) + Chrome.headerHeight + 4
         tabCapsule.isHidden = vertical
-        titleLabel.isHidden = !vertical
+        titleCapsule.isHidden = !vertical
         sidePanel.isHidden = !shown
         NSLayoutConstraint.deactivate(layout)
         let ground = window.contentView!
@@ -444,11 +452,11 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
                 tabPanel.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
                 tabPanel.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
                 tabPanel.widthAnchor.constraint(equalToConstant: Chrome.tabPanelWidth),
-                header.topAnchor.constraint(equalTo: ground.topAnchor),
-                header.leadingAnchor.constraint(equalTo: tabPanel.trailingAnchor, constant: inset),
-                header.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-                host.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-                host.topAnchor.constraint(equalTo: header.bottomAnchor),
+                header.topAnchor.constraint(equalTo: host.topAnchor),
+                header.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 6),
+                header.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -6),
+                host.leadingAnchor.constraint(equalTo: tabPanel.trailingAnchor, constant: inset),
+                host.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
                 host.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
                 host.trailingAnchor.constraint(equalTo: shown ? sidePanel.leadingAnchor : ground.trailingAnchor, constant: -inset),
                 sidePanel.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),

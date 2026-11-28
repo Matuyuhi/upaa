@@ -35,7 +35,7 @@ Works today:
 - A right panel with the changed files of the current shell's git repository and their diffs (Cmd-J)
 - Split panes (Cmd-D to the right, Cmd-Shift-D below, Cmd-[ and Cmd-] to move, Cmd-W to close); a new pane or tab starts in the current shell's directory
 
-Not yet: search, the list of links a session printed, and a translucent terminal.
+Not yet: search, and the list of links a session printed.
 
 ## Install
 
