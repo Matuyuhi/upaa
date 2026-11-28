@@ -73,7 +73,8 @@ jobs:
       - name: Test
         run: sh scripts/test.sh
 
-      # Open the real window and photograph it, without and with a config file.
+      # Open the real window and photograph it, without and with a config file. The file has two lines upaa cannot read,
+      # for the footer and Settings to show.
       # Only a launch failure, a crash or a missing window fails here; the pictures are kept to look at, not compared.
       - name: Launch screenshots
         env:
@@ -81,7 +82,8 @@ jobs:
         run: |
           dir=build/screenshots
           mkdir -p "$dir/default/upaa" "$dir/config/upaa"
-          printf '%s\n' 'font-family = Menlo' 'font-family = Apple Color Emoji' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' > "$dir/config/upaa/config"
+          printf '%s\n' 'font-family = Menlo' 'font-family = Apple Color Emoji' 'font-size = 16' 'foreground = #cdd6f4' 'background = #1e1e2e' 'window-width = 100' \
+            'cursor-style = bar' 'window-height = 2' > "$dir/config/upaa/config"
           # Prints the id of the window owned by the given process, to photograph that window alone.
           cat > "$dir/window.swift" <<'SWIFT'
           import CoreGraphics
@@ -91,14 +93,22 @@ jobs:
               print(id)
           }
           SWIFT
-          for name in default config top find ja dark; do
+          # A repository with changed lines wider than the right panel, for the changes shot.
+          repo="$PWD/$dir/repo"
+          git init -q "$repo"
+          printf '%s\n' 'let panel = ChangesPanel()' 'panel.refresh(directory: root)' > "$repo/Sample.swift"
+          git -C "$repo" add . && git -C "$repo" -c user.name=ci -c user.email=ci@localhost commit -qm base
+          printf '%s\n' 'let panel = ChangesPanel(frame: NSRect(x: 0, y: 0, width: Chrome.sidePanelWidth, height: 400))' \
+            '// 長い行はパネルの幅で折り返し、横にスクロールしなくても最後まで読める。' 'panel.refresh(directory: root)' > "$repo/Sample.swift"
+          for name in default config top find ja changes dark; do
             # top: no config file, with the tab list hidden (Cmd-B), so the tabs are in the toolbar, and a second tab opened there (Cmd-T).
             # find: no config file, with a line echoed and the find bar (Cmd-F) looking for a word in it.
+            # changes: no config file, in the repository above, with the right panel shown (Cmd-J).
             # ja: no config file, in Japanese, and its Settings window (Cmd-,) as well. The others are in English.
             # dark: no config file, with the runner switched to dark mode.
             conf="$name"
             lang=en
-            case "$name" in top | find) conf=default ;; esac
+            case "$name" in top | find | changes) conf=default ;; esac
             if [ "$name" = ja ]; then conf=default; lang=ja; fi
             if [ "$name" = dark ]; then
               conf=default
@@ -126,6 +136,14 @@ jobs:
                 -e 'delay 0.5' \
                 -e 'tell application "System Events" to keystroke "upaa"' || echo "could not press Cmd-F"
               sleep 2
+            fi
+            if [ "$name" = changes ]; then
+              osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
+                -e "tell application \"System Events\" to keystroke \"cd $repo && clear\"" \
+                -e 'tell application "System Events" to key code 36' \
+                -e 'delay 1' \
+                -e 'tell application "System Events" to keystroke "j" using command down' || echo "could not type cd, Cmd-J"
+              sleep 3
             fi
             id="$(swift "$dir/window.swift" "$pid")"
             [ -n "$id" ] || { echo "upaa opened no window ($name)"; exit 1; }
@@ -157,12 +175,62 @@ jobs:
           sleep 2
           id="$(swift "$dir/window.swift" "$pid")"
           [ -z "$id" ] || screencapture -x -o -l "$id" "$dir/settings.png"
-          # A line added to the file by hand reaches the open window (the size shows 20).
+          # The file changed by hand reaches the open window: the size shows 20, and the lines it could not read are gone.
+          sed -i '' -e '/^cursor-style/d' -e '/^window-height/d' "$dir/config/upaa/config"
           printf '%s\n' 'font-size = 20' >> "$dir/config/upaa/config"
           sleep 2
           [ -z "$id" ] || screencapture -x -o -l "$id" "$dir/settings-reload.png"
           kill "$pid"
           wait "$pid" || true
+
+      # Quit with Cmd-Q and launch again, with the system set both ways: to bring back the windows open at the quit, and
+      # to close them, when upaa opens one window where the front one was. Two windows are open, the front one moved and
+      # resized. Fails if a window comes back elsewhere or at another size.
+      - name: Restart
+        env:
+          UPAA_NO_UPDATE_CHECK: "1"
+        run: |
+          dir=build/screenshots
+          # Prints where each window of the given process is and its size, front to back, one per line.
+          cat > "$dir/frames.swift" <<'SWIFT'
+          import CoreGraphics
+          let pid = Int(CommandLine.arguments[1])!
+          let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+          for window in windows where window["kCGWindowOwnerPID"] as? Int == pid && window["kCGWindowLayer"] as? Int == 0 {
+              let bounds = window["kCGWindowBounds"] as? [String: Double] ?? [:]
+              print(["X", "Y", "Width", "Height"].map { String(Int(bounds[$0] ?? -1)) }.joined(separator: " "))
+          }
+          SWIFT
+          failed=
+          for keep in false true; do
+            defaults delete local.upaa 2>/dev/null || true
+            defaults write local.upaa NSQuitAlwaysKeepsWindows -bool "$keep"
+            build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
+            pid=$!
+            sleep 5
+            app="first process whose unix id is $pid"
+            osascript -e "tell application \"System Events\" to set frontmost of ($app) to true" \
+              -e 'tell application "System Events" to keystroke "n" using command down' -e 'delay 1' \
+              -e "tell application \"System Events\" to set position of window 1 of ($app) to {120, 90}" \
+              -e "tell application \"System Events\" to set size of window 1 of ($app) to {900, 560}" || echo "could not open or move a window"
+            sleep 1
+            before="$(swift "$dir/frames.swift" "$pid")"
+            [ "$keep" = true ] || before="$(echo "$before" | head -n 1)"
+            osascript -e "tell application \"System Events\" to set frontmost of ($app) to true" \
+              -e 'tell application "System Events" to keystroke "q" using command down'
+            for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+            kill -0 "$pid" 2>/dev/null && { echo "upaa did not quit on Cmd-Q"; kill "$pid"; exit 1; }
+            build/upaa.app/Contents/MacOS/upaa -AppleLanguages '(en)' &
+            pid=$!
+            sleep 5
+            after="$(swift "$dir/frames.swift" "$pid")"
+            kill "$pid"
+            wait "$pid" || true
+            printf 'keep windows %s\nbefore the quit:\n%s\nafter the launch:\n%s\n' "$keep" "$before" "$after"
+            [ "$(echo "$before" | sort)" = "$(echo "$after" | sort)" ] || { echo "the windows did not come back as they were"; failed=1; }
+          done
+          defaults delete local.upaa 2>/dev/null || true
+          [ -z "$failed" ]
 
       - name: Keep the launch screenshots
         if: always()
@@ -223,8 +291,9 @@ jobs:
             "Tabs along the top (Cmd-B): ![top]($url/top.png)" '' \
             "Find (Cmd-F): ![find]($url/find.png)" '' \
             "In Japanese: ![ja]($url/ja.png)" '' \
+            "Changes panel with lines wider than it (Cmd-J): ![changes]($url/changes.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" > ../comment.md
           if [ -f ../shots/settings.png ]; then printf '\n%s\n' "Settings (Cmd-,): ![settings]($url/settings.png)" >> ../comment.md; fi
           if [ -f ../shots/settings-ja.png ]; then printf '\n%s\n' "Settings in Japanese: ![settings-ja]($url/settings-ja.png)" >> ../comment.md; fi
-          if [ -f ../shots/settings-reload.png ]; then printf '\n%s\n' "Settings after font-size = 20 is added to the file: ![settings-reload]($url/settings-reload.png)" >> ../comment.md; fi
+          if [ -f ../shots/settings-reload.png ]; then printf '\n%s\n' "Settings after the file is fixed and font-size = 20 is added: ![settings-reload]($url/settings-reload.png)" >> ../comment.md; fi
           gh pr comment "$PR" --edit-last --create-if-none --body-file ../comment.md

@@ -148,16 +148,19 @@ final class ChangesPanel: NSView {
         if let previous = rows.arrangedSubviews.dropLast().last { rows.setCustomSpacing(top, after: previous) }
     }
 
+    /// One line of the diff. A line wider than the panel wraps, as the panel is too narrow to scroll sideways through.
     private static func diffLine(_ line: Substring) -> NSView {
-        let color: NSColor = line.hasPrefix("@@") ? .secondaryLabelColor : .labelColor
-        let label = Chrome.label(String(line), size: 11.5, mono: true, color: color)
-        label.lineBreakMode = .byTruncatingTail
+        let label = WrappingLabel(wrappingLabelWithString: String(line))
+        label.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        label.textColor = line.hasPrefix("@@") ? .secondaryLabelColor : .labelColor
+        label.isSelectable = false
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let fill = Fill(line.hasPrefix("+") ? Chrome.addedLine : line.hasPrefix("-") ? Chrome.removedLine : .clear)
         fill.addSubview(label)
         label.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: fill.leadingAnchor, constant: 10),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: fill.trailingAnchor, constant: -10),
+            label.trailingAnchor.constraint(equalTo: fill.trailingAnchor, constant: -10),
             label.topAnchor.constraint(equalTo: fill.topAnchor, constant: 1),
             label.bottomAnchor.constraint(equalTo: fill.bottomAnchor, constant: -1),
         ])
@@ -209,4 +212,16 @@ final class ChangesPanel: NSView {
 
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
+}
+
+/// A label that wraps at the width the layout gives it. A wrapping NSTextField sizes its height for
+/// preferredMaxLayoutWidth, so that follows its width, which changes with the panel's. The value is the width of the
+/// alignment rectangle, which is narrower than the frame, so the frame's width would leave a line that only just
+/// wraps measured as one line and its end cut off.
+private final class WrappingLabel: NSTextField {
+    override func layout() {
+        super.layout()
+        let width = alignmentRect(forFrame: frame).width
+        if preferredMaxLayoutWidth != width { preferredMaxLayoutWidth = width }
+    }
 }

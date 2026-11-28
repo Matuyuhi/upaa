@@ -15,8 +15,8 @@ final class Config {
     /// Cells.
     let cols: Int
     let rows: Int
-    /// The first line that could not be read, or nil.
-    let problem: String?
+    /// The lines that could not be read, as Zig words them.
+    let problems: [String]
 
     /// With no text, every setting is the default. Snapshots use this, so the baseline images do not depend on the user's file.
     init(text: String = "") {
@@ -29,7 +29,7 @@ final class Config {
         backgroundOpacity = values.background_opacity
         cols = Int(values.window_width)
         rows = Int(values.window_height)
-        problem = values.problem.map { String(cString: $0) }
+        problems = values.problems.map { String(cString: $0).components(separatedBy: "\n") } ?? []
     }
 
     deinit {

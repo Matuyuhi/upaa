@@ -3,13 +3,14 @@ import AppKit
 /// One window with tabs, laid out as design M5 on AppKit's own window parts. A tab is one terminal, or split views with
 /// terminals (panes) at their ends. Each pane has its own shell, and a tab is named after the title its focused pane's
 /// program set.
-/// A split view controller holds the tab list as its sidebar, the selected tab in the middle with a
-/// footer under it (the shell, the focused pane's size and the main keys), and the changed files of the focused pane's
-/// git repository as the right panel (Cmd-J). The toolbar holds the split buttons and the right panel's, and shows the
-/// tab's name with its directory and branch. Cmd-B hides the tab list, and the tabs move into the toolbar, in place of
-/// the title (design A3, tabs along the top). Where the traffic lights, the glass, the toolbar and the panels go, and
-/// how they move, is AppKit's. Behind them all is one card of the terminal's background color, translucent over a
-/// color gradient; the terminal draws no background of its own and runs up under the toolbar, its text below it.
+/// A split view controller holds the tab list as its sidebar, the selected tab in the middle with a footer under it
+/// (the shell, the focused pane's size, what in the config could not be used and the main keys), and the changed files
+/// of the focused pane's git repository as the right panel (Cmd-J). The toolbar holds the split buttons and the right
+/// panel's, and shows the tab's name with its directory and branch. Cmd-B hides the tab list, and the tabs move into
+/// the toolbar, in place of the title (design A3, tabs along the top). Where the traffic lights, the glass, the toolbar
+/// and the panels go, and how they move, is AppKit's. Behind them all is one card of the terminal's background color,
+/// translucent over a color gradient; the terminal draws no background of its own and runs up under the toolbar, its
+/// text below it.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
 final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private final class Tab {
@@ -46,6 +47,19 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// Holds the selected tab's view.
     private let host = Host()
     private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
+    /// The first of the problems, and how many more. A click opens Settings, which lists them all.
+    private let problemButton = NSButton(title: "", image: NSImage(systemSymbolName: "exclamationmark.triangle.fill",
+                                                                   accessibilityDescription: nil)!,
+                                         target: nil, action: #selector(AppDelegate.showSettings(_:)))
+    /// What in the config could not be used. The footer shows it until a reload of the config finds none.
+    var problems: [String] = [] {
+        didSet {
+            problemButton.isHidden = problems.isEmpty
+            guard let first = problems.first else { return }
+            problemButton.title = problems.count == 1 ? first : String(localized: "\(first) (\(problems.count - 1) more)")
+            problemButton.toolTip = problems.joined(separator: "\n")
+        }
+    }
     private let changes = ChangesPanel()
     private var panel: NSSplitViewItem!
     /// The focused pane's branch, from the last read of the changes.
@@ -144,6 +158,25 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The tabs along the top get the window's width less what the traffic lights and the buttons beside them take.
     func windowDidResize(_ notification: Notification) {
         tabStrip.room = max(0, window.frame.width - 340)
+        window.invalidateRestorableState()
+    }
+
+    /// The frame kept for the system's saved window (willEncodeRestorableState) is kept again after a move or a resize.
+    func windowDidMove(_ notification: Notification) {
+        window.invalidateRestorableState()
+    }
+
+    /// The system's saved window comes back at the frame it had when it was made, so the frame is kept here as well
+    /// and put back once the system has restored the window. A full-screen window is left to the system.
+    func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        state.encode(window.frameDescriptor, forKey: "frame")
+    }
+
+    func window(_ window: NSWindow, didDecodeRestorableState state: NSCoder) {
+        guard let frame = state.decodeObject(of: NSString.self, forKey: "frame") else { return }
+        window.setFrame(from: frame as String)
+        Self.keepOnScreen(window)
     }
 
     /// The window's close button and Cmd-Shift-W ask first while a program runs in one of its panes.
@@ -182,8 +215,30 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        Self.saveFrame(of: window)
         timer?.invalidate()
         onClose?()
+    }
+
+    /// The name of the frame that a launch opens its window at when the system brings back none.
+    static let frameName = "upaa"
+
+    /// Keeps where the window is and its size for the next launch, unless it is full screen, which fills its screen.
+    /// The window closed or quit last wins.
+    static func saveFrame(of window: NSWindow) {
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        window.saveFrame(usingName: frameName)
+    }
+
+    /// A window that a frame saved with other screens would leave partly off the screen comes back onto the screen it
+    /// is mostly on, or the main one, made smaller if it does not fit.
+    static func keepOnScreen(_ window: NSWindow) {
+        guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var frame = window.frame
+        frame.size = NSSize(width: min(frame.width, visible.width), height: min(frame.height, visible.height))
+        frame.origin = NSPoint(x: min(max(frame.minX, visible.minX), visible.maxX - frame.width),
+                               y: min(max(frame.minY, visible.minY), visible.maxY - frame.height))
+        if frame != window.frame { window.setFrame(frame, display: false) }
     }
 
     /// The middle of the window: the selected tab, and the footer under it with the shell, the focused pane's size and
@@ -194,10 +249,18 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         space.setContentHuggingPriority(.init(1), for: .horizontal)
         let footer = NSStackView(views: [
             Chrome.label(shell, size: 11, color: .secondaryLabelColor), sizeLabel,
-            Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space,
+            Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space, problemButton,
             Chrome.label(String(localized: "⌘D Split · ⌘F Find · ⌘B Tabs"), size: 11, color: .secondaryLabelColor),
         ])
         footer.spacing = 14
+        problemButton.isBordered = false
+        problemButton.imagePosition = .imageLeading
+        problemButton.font = .systemFont(ofSize: 11)
+        problemButton.symbolConfiguration = .init(pointSize: 10, weight: .regular)
+        problemButton.contentTintColor = Chrome.warning
+        problemButton.lineBreakMode = .byTruncatingTail
+        problemButton.setContentCompressionResistancePriority(.init(2), for: .horizontal)
+        problemButton.isHidden = problems.isEmpty
         host.wantsLayer = true
         host.layer?.masksToBounds = true
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))

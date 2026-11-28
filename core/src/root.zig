@@ -57,12 +57,14 @@ export fn upaa_config_values(config: *const Config) Config.Values {
 // Terminal session
 
 /// If command is null, starts the login shell; otherwise starts /bin/sh -c command. cwd null starts in the default directory.
+/// zsh_dir is the directory with upaa's zsh startup files, used when the login shell is zsh.
 /// The colors are libghostty-vt's until upaa_session_set_colors.
-export fn upaa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, cwd: ?[*:0]const u8, callbacks: ?*const Session.Callbacks) ?*Session {
+export fn upaa_session_new(cols: u16, rows: u16, command: ?[*:0]const u8, cwd: ?[*:0]const u8, zsh_dir: ?[*:0]const u8, callbacks: ?*const Session.Callbacks) ?*Session {
     return Session.create(.{
         .size = .{ .cols = cols, .rows = rows },
         .command = command,
         .cwd = cwd,
+        .zsh_dir = zsh_dir,
         .callbacks = if (callbacks) |cb| cb.* else .{},
     }) catch null;
 }
