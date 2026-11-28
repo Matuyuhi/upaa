@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # bump-version.yml runs it on its version commit, which must pass before it goes to main.
+  workflow_dispatch:
 
 permissions:
   contents: read
