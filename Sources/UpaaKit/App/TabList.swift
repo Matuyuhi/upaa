@@ -1,7 +1,9 @@
 import AppKit
 
 /// The window's sidebar: a source list of the tabs, each with its name and the directory of its focused pane, under
-/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own.
+/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own. AppKit's sidebar
+/// glass shows what is behind the window, not upaa's gradient, so the sidebar lays the window's ground (the gradient
+/// and the card, lined up with the window's) under a pane of the design's glass color.
 final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// A row was picked by the user.
     var onSelect: ((Int) -> Void)?
@@ -9,9 +11,20 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
     private let table = NSTableView()
     /// Set while the rows are being replaced, so that the new selection is not taken as the user's.
     private var reloading = false
+    private let ground = Backdrop(frame: .zero)
+    private var groundPinned = false
 
-    init() {
+    /// background is the card's color, as in the rest of the window.
+    init(background: NSColor) {
         super.init(nibName: nil, bundle: nil)
+        let card = Fill(background)
+        ground.addSubview(card)
+        card.pin(to: ground)
+        let glass = Fill(NSColor(name: nil) {
+            $0.isDark ? NSColor(red: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.45) : NSColor(white: 1, alpha: 0.5)
+        })
+        ground.addSubview(glass)
+        glass.pin(to: ground)
         let column = NSTableColumn(identifier: .init("tab"))
         column.resizingMask = .autoresizingMask
         table.addTableColumn(column)
@@ -48,7 +61,9 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         scroll.autohidesScrollers = true
 
         let view = NSView(frame: NSRect(x: 0, y: 0, width: Chrome.tabPanelWidth, height: 400))
-        for subview in [heading, scroll] {
+        view.wantsLayer = true
+        view.layer?.masksToBounds = true
+        for subview in [ground, heading, scroll] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(subview)
         }
@@ -66,14 +81,17 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         self.view = view
     }
 
-    /// AppKit puts the sidebar on regular glass, frosted enough to hide upaa's card and gradient. Clear glass lets
-    /// them show through it.
-    override func viewDidAppear() {
-        super.viewDidAppear()
-        guard #available(macOS 26.0, *) else { return }
-        var ancestor = view.superview
-        while let view = ancestor, !(view is NSGlassEffectView) { ancestor = view.superview }
-        (ancestor as? NSGlassEffectView)?.style = .clear
+    /// The ground covers the window's content, so that its gradient lines up with the one beside the sidebar.
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        guard !groundPinned, let content = view.window?.contentView else { return }
+        groundPinned = true
+        NSLayoutConstraint.activate([
+            ground.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            ground.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            ground.topAnchor.constraint(equalTo: content.topAnchor),
+            ground.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+        ])
     }
 
     func show(_ items: [(title: String, place: String)], selected: Int) {

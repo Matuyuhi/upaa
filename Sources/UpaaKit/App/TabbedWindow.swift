@@ -37,7 +37,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
 
     /// The tab list, the selected tab and the right panel, side by side.
     private let columns = NSSplitViewController()
-    private let tabList = TabList()
+    private let tabList: TabList
     /// Holds the selected tab's view.
     private let host = Host()
     private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
@@ -50,6 +50,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     init(window: NSWindow, first: TerminalView, background: NSColor, makeTerminal: @escaping (String?) -> TerminalView?) {
         self.window = window
         self.makeTerminal = makeTerminal
+        tabList = TabList(background: background)
         super.init()
 
         // The window was made to fit the terminal; the parts around it are added here.
