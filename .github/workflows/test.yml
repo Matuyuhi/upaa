@@ -89,9 +89,11 @@ jobs:
               print(id)
           }
           SWIFT
-          for name in default config dark; do
+          for name in default config top dark; do
+            # top: no config file, with a second tab (Cmd-T) and the tab list hidden (Cmd-B), so the tabs are in the toolbar.
             # dark: no config file, with the runner switched to dark mode.
             conf="$name"
+            [ "$name" = top ] && conf=default
             if [ "$name" = dark ]; then
               conf=default
               osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
@@ -100,6 +102,13 @@ jobs:
             pid=$!
             sleep 5
             kill -0 "$pid" || { echo "upaa exited during launch ($name)"; exit 1; }
+            if [ "$name" = top ]; then
+              osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" \
+                -e 'tell application "System Events" to keystroke "t" using command down' \
+                -e 'delay 1' \
+                -e 'tell application "System Events" to keystroke "b" using command down' || echo "could not press Cmd-T, Cmd-B"
+              sleep 2
+            fi
             id="$(swift "$dir/window.swift" "$pid")"
             [ -n "$id" ] || { echo "upaa opened no window ($name)"; exit 1; }
             screencapture -x -o -l "$id" "$dir/$name.png"
@@ -164,5 +173,6 @@ jobs:
           printf '%s\n' "Launch screenshots for $SHA" '' \
             "Without a config file: ![default]($url/default.png)" '' \
             "With a config file: ![config]($url/config.png)" '' \
+            "Tabs along the top (Cmd-B): ![top]($url/top.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" > ../comment.md
           gh pr comment "$PR" --edit-last --create-if-none --body-file ../comment.md

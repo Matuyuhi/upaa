@@ -3,10 +3,11 @@ import AppKit
 /// One window with tabs, laid out as design M5 on AppKit's own window parts. A tab is one terminal, or split views with
 /// terminals (panes) at their ends. Each pane has its own shell, and a tab is named after the title its focused pane's
 /// program set.
-/// A split view controller holds the tab list as its sidebar (Cmd-B hides it), the selected tab in the middle with a
+/// A split view controller holds the tab list as its sidebar, the selected tab in the middle with a
 /// footer under it (the shell, the focused pane's size and the main keys), and the changed files of the focused pane's
 /// git repository as the right panel (Cmd-J). The toolbar holds the split buttons and the right panel's, and shows the
-/// tab's name with its directory and branch. Where the traffic lights, the glass, the toolbar and the panels go, and
+/// tab's name with its directory and branch. Cmd-B hides the tab list, and the tabs move into the toolbar, in place of
+/// the title (design A3, tabs along the top). Where the traffic lights, the glass, the toolbar and the panels go, and
 /// how they move, is AppKit's. Behind them all is one card of the terminal's background color, translucent over a
 /// color gradient; the terminal draws no background of its own and runs up under the toolbar, its text below it.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
@@ -38,6 +39,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// The tab list, the selected tab and the right panel, side by side.
     private let columns = NSSplitViewController()
     private let tabList: TabList
+    /// The tabs in the toolbar while the tab list is hidden.
+    private let tabStrip = NSSegmentedControl(labels: [], trackingMode: .selectOne, target: nil, action: nil)
     /// Holds the selected tab's view.
     private let host = Host()
     private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
@@ -78,6 +81,10 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         panel.maximumThickness = 480
         panel.isCollapsed = true
         columns.splitViewItems = [sidebar, NSSplitViewItem(viewController: terminalArea()), panel]
+        tabStrip.target = self
+        tabStrip.action = #selector(pickTab(_:))
+        NotificationCenter.default.addObserver(self, selector: #selector(placeTabs(_:)),
+                                               name: NSSplitView.didResizeSubviewsNotification, object: columns.splitView)
         tabList.onSelect = { [weak self] index in
             guard let self, index != self.selected else { return }
             self.select(index)
@@ -171,6 +178,8 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     // MARK: Toolbar
 
     private static let tabsEdge = NSToolbarItem.Identifier("tabsEdge")
+    private static let tabsItem = NSToolbarItem.Identifier("tabs")
+    private static let newTabButton = NSToolbarItem.Identifier("newTab")
     private static let splitRight = NSToolbarItem.Identifier("splitRight")
     private static let splitDown = NSToolbarItem.Identifier("splitDown")
     private static let panelEdge = NSToolbarItem.Identifier("panelEdge")
@@ -181,7 +190,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        toolbarDefaultItemIdentifiers(toolbar) + [Self.tabsItem, Self.newTabButton]
     }
 
     /// The two edges follow the dividers, so the title starts at the tab list's edge and the panel button sits over
@@ -194,6 +203,12 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         case Self.splitRight: return button(identifier, "rectangle.split.2x1", "縦に分割 (⌘D)", #selector(splitRight(_:)))
         case Self.splitDown: return button(identifier, "rectangle.split.1x2", "横に分割 (⇧⌘D)", #selector(splitDown(_:)))
         case Self.panelButton: return button(identifier, "sidebar.right", "右パネル (⌘J)", #selector(toggleSidePanel(_:)))
+        case Self.newTabButton: return button(identifier, "plus", "新しいタブ (⌘T)", #selector(newTab(_:)))
+        case Self.tabsItem:
+            let item = NSToolbarItem(itemIdentifier: identifier)
+            item.view = tabStrip
+            item.label = "タブ"
+            return item
         default: return nil
         }
     }
@@ -209,6 +224,27 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         item.target = self
         item.action = action
         return item
+    }
+
+    /// With the tab list hidden (Cmd-B, or its divider dragged to the edge), the tabs and the new tab button go into
+    /// the toolbar beside the traffic lights, in place of the window's title; shown again, they go back.
+    @objc private func placeTabs(_ notification: Notification) {
+        guard let toolbar = window.toolbar else { return }
+        let top = columns.splitViewItems[0].isCollapsed
+        guard top != toolbar.items.contains(where: { $0.itemIdentifier == Self.tabsItem }) else { return }
+        if top {
+            toolbar.insertItem(withItemIdentifier: Self.newTabButton, at: 1)
+            toolbar.insertItem(withItemIdentifier: Self.tabsItem, at: 1)
+        } else {
+            for identifier in [Self.tabsItem, Self.newTabButton] {
+                if let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == identifier }) { toolbar.removeItem(at: index) }
+            }
+        }
+        window.titleVisibility = top ? .hidden : .visible
+    }
+
+    @objc private func pickTab(_ sender: NSSegmentedControl) {
+        if sender.selectedSegment != selected { select(sender.selectedSegment) }
     }
 
     // MARK: Menu actions
@@ -397,7 +433,13 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         let tab = tabs[selected]
         window.title = tab.focus.session.title ?? "upaa"
         window.subtitle = [place(of: tab), branch ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
-        tabList.show(tabs.map { (title: $0.focus.session.title ?? "upaa", place: place(of: $0)) }, selected: selected)
+        let titles = tabs.map { $0.focus.session.title ?? "upaa" }
+        tabList.show(zip(titles, tabs).map { (title: $0, place: place(of: $1)) }, selected: selected)
+        tabStrip.segmentCount = titles.count
+        for (index, title) in titles.enumerated() {
+            tabStrip.setLabel(title.count > 24 ? String(title.prefix(23)) + "…" : title, forSegment: index)
+        }
+        tabStrip.selectedSegment = selected
 
         // A split or a closed pane can change which panes are along the top.
         host.needsLayout = true
