@@ -3,13 +3,14 @@ import AppKit
 /// One window with tabs, laid out as design M5 on AppKit's own window parts. A tab is one terminal, or split views with
 /// terminals (panes) at their ends. Each pane has its own shell, and a tab is named after the title its focused pane's
 /// program set.
-/// A split view controller holds the tab list as its sidebar, the selected tab in the middle with a
-/// footer under it (the shell, the focused pane's size and the main keys), and the changed files of the focused pane's
-/// git repository as the right panel (Cmd-J). The toolbar holds the split buttons and the right panel's, and shows the
-/// tab's name with its directory and branch. Cmd-B hides the tab list, and the tabs move into the toolbar, in place of
-/// the title (design A3, tabs along the top). Where the traffic lights, the glass, the toolbar and the panels go, and
-/// how they move, is AppKit's. Behind them all is one card of the terminal's background color, translucent over a
-/// color gradient; the terminal draws no background of its own and runs up under the toolbar, its text below it.
+/// A split view controller holds the tab list as its sidebar, the selected tab in the middle with a footer under it
+/// (the shell, the focused pane's size, what in the config could not be used and the main keys), and the changed files
+/// of the focused pane's git repository as the right panel (Cmd-J). The toolbar holds the split buttons and the right
+/// panel's, and shows the tab's name with its directory and branch. Cmd-B hides the tab list, and the tabs move into
+/// the toolbar, in place of the title (design A3, tabs along the top). Where the traffic lights, the glass, the toolbar
+/// and the panels go, and how they move, is AppKit's. Behind them all is one card of the terminal's background color,
+/// translucent over a color gradient; the terminal draws no background of its own and runs up under the toolbar, its
+/// text below it.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
 final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private final class Tab {
@@ -46,6 +47,19 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// Holds the selected tab's view.
     private let host = Host()
     private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
+    /// The first of the problems, and how many more. A click opens Settings, which lists them all.
+    private let problemButton = NSButton(title: "", image: NSImage(systemSymbolName: "exclamationmark.triangle.fill",
+                                                                   accessibilityDescription: nil)!,
+                                         target: nil, action: #selector(AppDelegate.showSettings(_:)))
+    /// What in the config could not be used. The footer shows it until a reload of the config finds none.
+    var problems: [String] = [] {
+        didSet {
+            problemButton.isHidden = problems.isEmpty
+            guard let first = problems.first else { return }
+            problemButton.title = problems.count == 1 ? first : String(localized: "\(first) (\(problems.count - 1) more)")
+            problemButton.toolTip = problems.joined(separator: "\n")
+        }
+    }
     private let changes = ChangesPanel()
     private var panel: NSSplitViewItem!
     /// The focused pane's branch, from the last read of the changes.
@@ -235,10 +249,18 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         space.setContentHuggingPriority(.init(1), for: .horizontal)
         let footer = NSStackView(views: [
             Chrome.label(shell, size: 11, color: .secondaryLabelColor), sizeLabel,
-            Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space,
+            Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space, problemButton,
             Chrome.label(String(localized: "⌘D Split · ⌘B Tabs"), size: 11, color: .secondaryLabelColor),
         ])
         footer.spacing = 14
+        problemButton.isBordered = false
+        problemButton.imagePosition = .imageLeading
+        problemButton.font = .systemFont(ofSize: 11)
+        problemButton.symbolConfiguration = .init(pointSize: 10, weight: .regular)
+        problemButton.contentTintColor = Chrome.warning
+        problemButton.lineBreakMode = .byTruncatingTail
+        problemButton.setContentCompressionResistancePriority(.init(2), for: .horizontal)
+        problemButton.isHidden = problems.isEmpty
         host.wantsLayer = true
         host.layer?.masksToBounds = true
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))

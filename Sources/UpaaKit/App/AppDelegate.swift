@@ -4,8 +4,12 @@ import Metal
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var config = Config.load()
     private lazy var fontFamily = config.fontFamily
-    /// A config problem not shown yet. The next terminal to open shows it.
-    private lazy var problem = config.problem
+    /// The config's font could not be found, so a terminal kept its font or took the default.
+    private var fontMissing = false
+    /// What in the config could not be used, shown in every window's footer and in Settings.
+    private var problems: [String] {
+        config.problems + (fontMissing ? [String(localized: "Font not found: \(config.fontFamilies[0])")] : [])
+    }
     /// AppKit does not keep a window alive by itself, so open windows are held here until they close.
     private var windows: [TabbedWindow] = []
     /// Every open terminal, for a change of font.
@@ -69,9 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Cmd-,.
     @objc func showSettings(_ sender: Any?) {
-        let settings = settings ?? SettingsWindow(families: config.fontFamilies, size: config.fontSize) { [weak self] in
-            self?.saveFont(families: $0, size: $1)
-        }
+        let settings = settings ?? SettingsWindow(
+            families: config.fontFamilies, size: config.fontSize, problems: problems
+        ) { [weak self] in self?.saveFont(families: $0, size: $1) }
         self.settings = settings
         settings.showWindow(nil)
     }
@@ -129,7 +133,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for terminal in terminals.allObjects {
             terminal.session.config = config
             terminal.session.setColors(dark: terminal.effectiveAppearance.isDark)
-            if let problem = config.problem { terminal.showNote(problem) }
         }
         for window in NSApp.windows where window.delegate is TabbedWindow {
             window.appearance = config.backgroundIsDark.map { NSAppearance(named: $0 ? .darkAqua : .aqua)! }
@@ -140,14 +143,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 views += view.subviews
             }
         }
+        fontMissing = false
         applyFont()
-        settings?.show(families: config.fontFamilies, size: config.fontSize)
+        for window in windows { window.problems = problems }
+        settings?.show(families: config.fontFamilies, size: config.fontSize, problems: problems)
     }
 
     /// Puts the font in every open terminal, and steps every window's size by the new cell.
     private func applyFont() {
         for terminal in terminals.allObjects where !terminal.setFont(name: fontFamily, size: fontSize) {
-            terminal.showNote("config: font-family not found, kept the font")
+            fontMissing = true
         }
         guard let cell = terminals.anyObject?.renderer.cellSize else { return }
         for window in NSApp.windows where window.delegate is TabbedWindow {
@@ -184,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.makeTerminal(cwd: cwd)
         }
         tabs.onClose = { [weak self, weak tabs] in self?.windows.removeAll { $0 === tabs } }
+        tabs.problems = problems
         windows.append(tabs)
         return window
     }
@@ -198,7 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let device = MTLCreateSystemDefaultDevice(),
               let renderer = makeRenderer(device: device) ?? {
-                  problem = "config: font-family not found, using the default"
+                  fontMissing = true
                   fontFamily = Config().fontFamily
                   return makeRenderer(device: device)
               }(),
@@ -206,11 +212,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return nil }
         let view = TerminalView(session: session, renderer: renderer)
         terminals.add(view)
-        if let problem {
-            NSLog("upaa: \(problem)")
-            view.showNote(problem)
-            self.problem = nil
-        }
         return view
     }
 }

@@ -25,8 +25,8 @@ typedef struct {
     // Cells.
     uint16_t window_width;
     uint16_t window_height;
-    // The first line that could not be read (ASCII), or NULL. Valid while the config lives.
-    const char *problem;
+    // The lines that could not be read, one per line (ASCII), or NULL. Valid while the config lives.
+    const char *problems;
 } UpaaConfigValues;
 
 // Reads the text of the config file (UTF-8). Settings it does not name keep their defaults. NULL only when out of memory.
