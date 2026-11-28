@@ -1,31 +1,22 @@
 import AppKit
 
-/// Sizes and colors of the window's chrome, from the design's mockup (M5: tabs, splits and search).
+/// Sizes and colors of upaa's own views, from the design's mockup (M5: tabs, splits and search).
 enum Chrome {
-    static let inset: CGFloat = 8
-    static let headerHeight: CGFloat = 44
-    /// The header's top. Its middle is then in line with the traffic lights, in the middle of the 52 pt title bar that
-    /// the window's empty unified toolbar makes.
-    static let headerTop: CGFloat = 4
     static let footerHeight: CGFloat = 26
+    /// The tab list's width when the window opens.
     static let tabPanelWidth: CGFloat = 224
+    /// The right panel's narrowest width.
     static let sidePanelWidth: CGFloat = 240
-    /// Horizontal tabs: the room left of the tabs for the traffic lights.
-    static let trafficLightsWidth: CGFloat = 78
     static let inactivePaneAlpha: CGFloat = 0.6
 
-    /// Selected tab, selected file, the branch and the main button. In light mode the glass comes out nearly white,
-    /// so the design's white pill is lost on it; a faint gray stands in.
+    /// The selected file. In light mode the panel's glass comes out nearly white, so the design's white pill is lost on
+    /// it; a faint gray stands in.
     static let pill = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.07) }
-    /// A button under the pointer, and one held down, as AppKit's own toolbar buttons show them.
+    /// A row under the pointer, and one held down, as AppKit's own buttons show them.
     static let hover = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.08) : NSColor(white: 0, alpha: 0.04) }
     static let pressed = NSColor(name: nil) { $0.isDark ? NSColor(white: 1, alpha: 0.2) : NSColor(white: 0, alpha: 0.11) }
-    /// How long a button's or a panel's change of state takes.
+    /// How long a row's change of color takes.
     static let animation: TimeInterval = 0.2
-    /// The tint of the glass panels. The design's white at 0.5 makes the light glass solid, so light mode takes less.
-    static let glass = NSColor(name: nil) {
-        $0.isDark ? NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.45) : NSColor(white: 1, alpha: 0.2)
-    }
     static let addedLine = NSColor.systemGreen.withAlphaComponent(0.18)
     static let removedLine = NSColor.systemRed.withAlphaComponent(0.16)
 
@@ -65,56 +56,6 @@ extension NSView {
     }
 }
 
-/// A rounded panel of the system's glass: Liquid Glass on macOS 26 and later, a blurred material before.
-/// Put the panel's views in content.
-final class GlassPanel: NSView {
-    let content = NSView()
-
-    init(cornerRadius: CGFloat) {
-        super.init(frame: .zero)
-        let glass: NSView
-        if #available(macOS 26.0, *) {
-            let view = NSGlassEffectView()
-            view.cornerRadius = cornerRadius
-            view.contentView = content
-            glass = view
-        } else {
-            let view = NSVisualEffectView()
-            view.material = .popover
-            view.blendingMode = .withinWindow
-            view.state = .active
-            view.wantsLayer = true
-            view.layer?.cornerRadius = cornerRadius
-            view.layer?.masksToBounds = true
-            view.addSubview(content)
-            content.pin(to: view)
-            glass = view
-        }
-        addSubview(glass)
-        glass.pin(to: self)
-    }
-
-    /// The glass keeps the tint it is given as one fixed color, so it gets the tint for this view's light or dark mode
-    /// each time that changes. A tint set before the view is in a window resolved to light mode.
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        guard #available(macOS 26.0, *), let glass = subviews.first as? NSGlassEffectView else { return }
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.tintColor = NSColor(cgColor: Chrome.glass.cgColor)
-        }
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        viewDidChangeEffectiveAppearance()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not used")
-    }
-}
-
 /// A rounded rectangle of one color that follows light and dark mode.
 final class Fill: NSView {
     var color: NSColor {
@@ -150,7 +91,7 @@ final class Fill: NSView {
     }
 }
 
-/// A Fill that runs an action when clicked (tab items, file rows, toolbar buttons). On, it has the pill color and a
+/// A Fill that runs an action when clicked (the right panel's file rows). On, it has the pill color and a
 /// faint shadow. Under the pointer and held down it lightens and darkens, and lets go of the click as a button does:
 /// on release over it.
 final class Clickable: NSView {

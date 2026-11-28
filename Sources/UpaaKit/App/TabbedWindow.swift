@@ -1,16 +1,16 @@
 import AppKit
 
-/// One window with tabs, laid out as design A3. A tab is one terminal, or split views with terminals (panes) at their
-/// ends. Each pane has its own shell, and a tab is named after the title its focused pane's program set.
-/// As in the design (M5): the window is one card of the terminal's background color, translucent over a color gradient,
-/// and the terminal draws no background of its own. Down the left side the tabs are a glass panel, and the title and
-/// the tools sit in a band above the terminal; with the tabs at the top (Cmd-B), the tabs and tools float over the
-/// terminal in glass. Either way the terminal's text starts below them. Down the side, a footer under the terminal shows
-/// the shell, the focused pane's size and the main keys. The right panel (Cmd-J) shows the changed files of the
-/// focused pane's git repository: down the side it takes room from the terminal, with the tabs at the top it floats
-/// over it.
+/// One window with tabs, laid out as design M5 on AppKit's own window parts. A tab is one terminal, or split views with
+/// terminals (panes) at their ends. Each pane has its own shell, and a tab is named after the title its focused pane's
+/// program set.
+/// A split view controller holds the tab list as its sidebar (Cmd-B hides it), the selected tab in the middle with a
+/// footer under it (the shell, the focused pane's size and the main keys), and the changed files of the focused pane's
+/// git repository as the right panel (Cmd-J). The toolbar holds the split buttons and the right panel's, and shows the
+/// tab's name with its directory and branch. Where the traffic lights, the glass, the toolbar and the panels go, and
+/// how they move, is AppKit's. Behind them all is one card of the terminal's background color, translucent over a
+/// color gradient; the terminal draws no background of its own and runs up under the toolbar, its text below it.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
-final class TabbedWindow: NSObject, NSWindowDelegate {
+final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private final class Tab {
         /// The terminal, or the split view that holds the tab's panes.
         var top: NSView
@@ -33,36 +33,18 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     private var selected = 0
     /// The window closed (its last tab closed, or the window itself).
     var onClose: (() -> Void)?
-
-    /// Tabs down the left side, or along the top.
-    private var vertical = true
-    private var sidePanelWanted = false
-    /// The layout in place: vertical, and whether the right panel shows.
-    private var arranged: (Bool, Bool)?
-    private var layout: [NSLayoutConstraint] = []
     private var timer: Timer?
 
+    /// The tab list, the selected tab and the right panel, side by side.
+    private let columns = NSSplitViewController()
+    private let tabList = TabList()
     /// Holds the selected tab's view.
     private let host = Host()
-    private let tabPanel = GlassPanel(cornerRadius: 16)
-    private let tabList = NSStackView()
-    private let tabCapsule = GlassPanel(cornerRadius: 18)
-    private let tabStrip = NSStackView()
-    private let header = NSStackView()
-    private let titleLabel = Chrome.label("", size: 13, weight: .semibold)
-    /// The focused pane's directory, after the title.
-    private let placeLabel = Chrome.label("", size: 12, mono: true, color: .secondaryLabelColor)
-    private let branchLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
-    private let branchCapsule = Fill(Chrome.pill, cornerRadius: 9)
-    /// The tab's name, directory and branch, when the tabs are down the side.
-    private let titleRow = NSStackView()
-    private let panelButton = TabbedWindow.toolButton("sidebar.right", "右パネル (⌘J)")
-    /// The tools under the tab list. Git, the changed files, is the only one yet.
-    private let gitButton = TabbedWindow.toolButton("arrow.triangle.branch", "Git (⌘J)", size: 32, cornerRadius: 9)
-    private let footer = NSStackView()
     private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
-    private let sidePanel = GlassPanel(cornerRadius: 16)
     private let changes = ChangesPanel()
+    private var panel: NSSplitViewItem!
+    /// The focused pane's branch, from the last read of the changes.
+    private var branch: String?
 
     /// background is the card's color: the terminal's default background, as translucent as the config says.
     init(window: NSWindow, first: TerminalView, background: NSColor, makeTerminal: @escaping (String?) -> TerminalView?) {
@@ -70,39 +52,58 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         self.makeTerminal = makeTerminal
         super.init()
 
-        // The window was made to fit the terminal; the chrome around it is added here.
+        // The window was made to fit the terminal; the parts around it are added here.
         let terminalSize = window.contentRect(forFrameRect: window.frame).size
-        let ground = Backdrop()
-        window.contentView = ground
+        let root = NSViewController()
+        // Sized to the terminal, so that the window does not shrink below its title bar when the root is set.
+        root.view = Backdrop(frame: NSRect(origin: .zero, size: terminalSize))
+        let card = Fill(background)
+        root.view.addSubview(card)
+        card.pin(to: root.view)
+        root.addChild(columns)
+        root.view.addSubview(columns.view)
+        columns.view.pin(to: root.view)
+
+        let sidebar = NSSplitViewItem(sidebarWithViewController: tabList)
+        sidebar.minimumThickness = 180
+        sidebar.maximumThickness = 360
+        if #available(macOS 14.0, *) {
+            panel = NSSplitViewItem(inspectorWithViewController: Self.controller(changes, inset: 8))
+        } else {
+            panel = NSSplitViewItem(viewController: Self.controller(changes, inset: 8))
+            panel.canCollapse = true
+        }
+        panel.minimumThickness = Chrome.sidePanelWidth
+        panel.maximumThickness = 480
+        panel.isCollapsed = true
+        columns.splitViewItems = [sidebar, NSSplitViewItem(viewController: terminalArea()), panel]
+        tabList.onSelect = { [weak self] index in
+            guard let self, index != self.selected else { return }
+            self.select(index)
+        }
+        changes.onUpdate = { [weak self] branch in
+            guard let self, branch != self.branch else { return }
+            self.branch = branch
+            self.refresh()
+        }
+
         window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        // An empty toolbar makes the title bar taller, which puts the traffic lights in line with the header.
-        window.toolbar = NSToolbar()
+        window.contentViewController = root
+        let toolbar = NSToolbar(identifier: "upaa")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.delegate = self
+        // The terminal runs under the toolbar, so the window is taller by the toolbar, and wider by the tab list.
+        let toolbarHeight = window.frame.height - window.contentLayoutRect.height
         window.setContentSize(NSSize(
-            width: terminalSize.width + 2 * Chrome.inset + Chrome.tabPanelWidth + Self.textInset,
-            height: terminalSize.height + Chrome.headerTop + Chrome.headerHeight + Chrome.footerHeight + Chrome.inset))
-        let card = Fill(background)
-        ground.addSubview(card)
-        card.pin(to: ground)
-        for view in [host, tabPanel, header, sidePanel, footer] as [NSView] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            ground.addSubview(view)
-        }
-        host.wantsLayer = true
-        host.layer?.masksToBounds = true
-        buildTabPanel()
-        buildHeader()
-        buildFooter()
-        sidePanel.content.addSubview(changes)
-        changes.pin(to: sidePanel.content)
-        changes.onUpdate = { [weak self] branch in
-            self?.branchLabel.stringValue = branch ?? ""
-            self?.refresh()
-        }
+            width: terminalSize.width + Chrome.tabPanelWidth + columns.splitView.dividerThickness,
+            height: terminalSize.height + toolbarHeight + Chrome.footerHeight))
+        root.view.layoutSubtreeIfNeeded()
+        columns.splitView.setPosition(Chrome.tabPanelWidth, ofDividerAt: 0)
 
         watch(first)
         tabs.append(Tab(first))
@@ -116,106 +117,97 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         onClose?()
     }
 
-    private func buildTabPanel() {
-        let heading = NSStackView(views: [
-            Chrome.label("タブ", size: 11, weight: .semibold, color: .secondaryLabelColor), NSView(), plusButton(size: 22),
-        ])
-        heading.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 0, right: 0)
-        tabList.orientation = .vertical
-        tabList.spacing = 2
-        let space = NSView()
-        space.setContentHuggingPriority(.init(1), for: .vertical)
-        let line = NSBox()
-        line.boxType = .separator
-        gitButton.onClick = { [weak self] in
-            guard let self, !self.sidePanelWanted else { return }
-            self.toggleSidePanel(nil)
-        }
-        let column = NSStackView()
-        column.orientation = .vertical
-        column.spacing = 6
-        // The top of the panel is left for the traffic lights.
-        column.edgeInsets = NSEdgeInsets(top: Chrome.headerHeight, left: 8, bottom: 8, right: 8)
-        tabPanel.content.addSubview(column)
-        column.pin(to: tabPanel.content)
-        column.addFullWidth(heading)
-        column.addFullWidth(tabList)
-        column.addArrangedSubview(space)
-        column.addFullWidth(line)
-        column.addArrangedSubview(gitButton)
-
-        tabStrip.spacing = 2
-        tabStrip.edgeInsets = NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)
-        tabCapsule.content.addSubview(tabStrip)
-        tabStrip.pin(to: tabCapsule.content)
-        tabCapsule.heightAnchor.constraint(equalToConstant: 36).isActive = true
-    }
-
-    private func buildHeader() {
-        let label = NSStackView(views: [branchLabel])
-        label.edgeInsets = NSEdgeInsets(top: 1, left: 8, bottom: 1, right: 8)
-        branchCapsule.addSubview(label)
-        label.pin(to: branchCapsule)
-        for view in [titleLabel, Chrome.label("›", size: 13, color: .secondaryLabelColor), placeLabel, branchCapsule] {
-            titleRow.addArrangedSubview(view)
-        }
-        titleRow.spacing = 6
-
-        let splitRight = Self.toolButton("rectangle.split.2x1", "縦に分割 (⌘D)")
-        splitRight.onClick = { [weak self] in self?.split(vertical: true) }
-        let splitDown = Self.toolButton("rectangle.split.1x2", "横に分割 (⇧⌘D)")
-        splitDown.onClick = { [weak self] in self?.split(vertical: false) }
-        panelButton.onClick = { [weak self] in self?.toggleSidePanel(nil) }
-        let tools = NSStackView(views: [splitRight, splitDown, panelButton])
-        tools.spacing = 2
-        tools.edgeInsets = NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)
-        let toolbar = GlassPanel(cornerRadius: 18)
-        // A stack's insets across its alignment do not hold it open, so the capsules' heights are set.
-        toolbar.heightAnchor.constraint(equalToConstant: 36).isActive = true
-        toolbar.content.addSubview(tools)
-        tools.pin(to: toolbar.content)
-
-        let space = NSView()
-        space.setContentHuggingPriority(.init(1), for: .horizontal)
-        for view in [tabCapsule, titleRow, space, toolbar] as [NSView] { header.addArrangedSubview(view) }
-        header.spacing = 8
-    }
-
-    /// The shell, the focused pane's size, and the main keys.
-    private func buildFooter() {
+    /// The middle of the window: the selected tab, and the footer under it with the shell, the focused pane's size and
+    /// the main keys, its text in line with the terminal's.
+    private func terminalArea() -> NSViewController {
         let shell = (ProcessInfo.processInfo.environment["SHELL"].map { ($0 as NSString).lastPathComponent }) ?? "sh"
         let space = NSView()
         space.setContentHuggingPriority(.init(1), for: .horizontal)
-        for view in [Chrome.label(shell, size: 11, color: .secondaryLabelColor), sizeLabel,
-                     Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space,
-                     Chrome.label("⌘D 分割 · ⌘B タブパネル", size: 11, color: .secondaryLabelColor)] {
-            footer.addArrangedSubview(view)
-        }
+        let footer = NSStackView(views: [
+            Chrome.label(shell, size: 11, color: .secondaryLabelColor), sizeLabel,
+            Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space,
+            Chrome.label("⌘D 分割 · ⌘B タブ一覧", size: 11, color: .secondaryLabelColor),
+        ])
         footer.spacing = 14
+        host.wantsLayer = true
+        host.layer?.masksToBounds = true
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
+        for subview in [host, footer] as [NSView] {
+            subview.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(subview)
+        }
+        NSLayoutConstraint.activate([
+            host.topAnchor.constraint(equalTo: view.topAnchor),
+            host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
+            footer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Renderer.paddingPoints.horizontal),
+            footer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            footer.heightAnchor.constraint(equalToConstant: Chrome.footerHeight),
+        ])
+        let controller = NSViewController()
+        controller.view = view
+        return controller
     }
 
-    /// A round button with a symbol, as the design's tools. The name shows on hover.
-    private static func toolButton(_ symbol: String, _ name: String, size: CGFloat = 30, cornerRadius: CGFloat = 15)
-        -> Clickable
+    /// A controller whose view holds content inside its safe area (below the toolbar), inset on the other sides.
+    private static func controller(_ content: NSView, inset: CGFloat) -> NSViewController {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: Chrome.sidePanelWidth, height: 400))
+        content.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            content.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+            content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
+            content.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        let controller = NSViewController()
+        controller.view = view
+        return controller
+    }
+
+    // MARK: Toolbar
+
+    private static let tabsEdge = NSToolbarItem.Identifier("tabsEdge")
+    private static let splitRight = NSToolbarItem.Identifier("splitRight")
+    private static let splitDown = NSToolbarItem.Identifier("splitDown")
+    private static let panelEdge = NSToolbarItem.Identifier("panelEdge")
+    private static let panelButton = NSToolbarItem.Identifier("panel")
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [Self.tabsEdge, .flexibleSpace, Self.splitRight, Self.splitDown, Self.panelEdge, Self.panelButton]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    /// The two edges follow the dividers, so the title starts at the tab list's edge and the panel button sits over
+    /// the right panel when it shows.
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        switch identifier {
+        case Self.tabsEdge: return NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: columns.splitView, dividerIndex: 0)
+        case Self.panelEdge: return NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: columns.splitView, dividerIndex: 1)
+        case Self.splitRight: return button(identifier, "rectangle.split.2x1", "縦に分割 (⌘D)", #selector(splitRight(_:)))
+        case Self.splitDown: return button(identifier, "rectangle.split.1x2", "横に分割 (⇧⌘D)", #selector(splitDown(_:)))
+        case Self.panelButton: return button(identifier, "sidebar.right", "右パネル (⌘J)", #selector(toggleSidePanel(_:)))
+        default: return nil
+        }
+    }
+
+    private func button(_ identifier: NSToolbarItem.Identifier, _ symbol: String, _ name: String, _ action: Selector)
+        -> NSToolbarItem
     {
-        let image = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: name)!)
-        image.symbolConfiguration = .init(pointSize: 13, weight: .regular)
-        image.contentTintColor = .labelColor
-        let button = Clickable(cornerRadius: cornerRadius, selected: false, [image], padding: NSEdgeInsets())
-        button.toolTip = name
-        button.widthAnchor.constraint(equalToConstant: size).isActive = true
-        button.heightAnchor.constraint(equalToConstant: size).isActive = true
-        return button
-    }
-
-    private func plusButton(size: CGFloat) -> NSButton {
-        let button = NSButton(image: NSImage(systemSymbolName: "plus", accessibilityDescription: "新しいタブ")!,
-                              target: self, action: #selector(newTab(_:)))
-        button.isBordered = false
-        button.contentTintColor = .secondaryLabelColor
-        button.widthAnchor.constraint(equalToConstant: size).isActive = true
-        button.heightAnchor.constraint(equalToConstant: size).isActive = true
-        return button
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: name)
+        item.label = name
+        item.toolTip = name
+        item.isBordered = true
+        item.target = self
+        item.action = action
+        return item
     }
 
     // MARK: Menu actions
@@ -266,16 +258,9 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         select(index)
     }
 
-    /// Cmd-B. Moves the tabs between the left side and the top.
-    @objc func toggleTabLayout(_ sender: Any?) {
-        vertical.toggle()
-        refresh()
-    }
-
-    /// Cmd-J. Shows or hides the right panel.
+    /// Cmd-J. Shows or hides the right panel, as AppKit animates a split view's panel.
     @objc func toggleSidePanel(_ sender: Any?) {
-        sidePanelWanted.toggle()
-        refresh()
+        panel.animator().isCollapsed = !panel.isCollapsed
         readChanges()
     }
 
@@ -406,35 +391,17 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
 
     // MARK: Layout
 
-    /// Brings the layout, the tab list, the toolbar and the window title up to date.
+    /// Brings the tab list, the panes and the window's title up to date.
     private func refresh() {
         let tab = tabs[selected]
-        // With the tabs at the top, a shell beside the pane takes the card's place.
-        let sidePanelShown = sidePanelWanted && (vertical || tab.panes.count == 1)
-        if arranged.map({ $0 != (vertical, sidePanelShown) }) ?? true {
-            arrange(sidePanel: sidePanelShown)
-        }
-
-        let title = tab.focus.session.title ?? "upaa"
-        window.title = title
-        titleLabel.stringValue = title
-        placeLabel.stringValue = place(of: tab)
-        branchCapsule.isHidden = !vertical || branchLabel.stringValue.isEmpty
-        let list = vertical ? tabList : tabStrip
-        list.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for (index, tab) in tabs.enumerated() {
-            let item = tabItem(tab, selected: index == selected)
-            item.onClick = { [weak self] in self?.select(index) }
-            if vertical { tabList.addFullWidth(item) } else { tabStrip.addArrangedSubview(item) }
-        }
-        if !vertical { tabStrip.addArrangedSubview(plusButton(size: 30)) }
+        window.title = tab.focus.session.title ?? "upaa"
+        window.subtitle = [place(of: tab), branch ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        tabList.show(tabs.map { (title: $0.focus.session.title ?? "upaa", place: place(of: $0)) }, selected: selected)
 
         // A split or a closed pane can change which panes are along the top.
         host.needsLayout = true
         let panes = tab.panes
         for pane in panes { pane.alphaValue = panes.count == 1 || pane === tab.focus ? 1 : Chrome.inactivePaneAlpha }
-        panelButton.isOn = sidePanelShown
-        gitButton.isOn = sidePanelShown
         showSize()
     }
 
@@ -444,126 +411,27 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         sizeLabel.stringValue = "\(size.cols)×\(size.rows)"
     }
 
-    /// Down the side: the tab's name, and the directory of its focused pane. At the top: the name alone.
-    private func tabItem(_ tab: Tab, selected: Bool) -> Clickable {
-        let title = tab.focus.session.title ?? "upaa"
-        guard vertical else {
-            let item = Clickable(cornerRadius: 15, selected: selected,
-                                 [Chrome.label(title, size: 12, weight: selected ? .semibold : .regular)],
-                                 padding: NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12))
-            item.heightAnchor.constraint(equalToConstant: 30).isActive = true
-            item.widthAnchor.constraint(lessThanOrEqualToConstant: 200).isActive = true
-            return item
-        }
-        return Clickable(cornerRadius: 10, selected: selected, [
-            Chrome.label(title, size: 13, weight: selected ? .semibold : .regular),
-            Chrome.label(place(of: tab), size: 11, mono: true, color: .secondaryLabelColor),
-        ], spacing: 2, vertical: true, padding: NSEdgeInsets(top: 7, left: 10, bottom: 7, right: 10))
-    }
-
     /// The focused pane's directory, with ~ for home.
     private func place(of tab: Tab) -> String {
         let place = tab.focus.session.cwd ?? ""
         let home = NSHomeDirectory()
         return place.hasPrefix(home) ? "~" + place.dropFirst(home.count) : place
     }
-
-    /// The terminal's text, the title and the footer start on one line, 12 pt from the tab panel as in the design.
-    private static let textInset: CGFloat = 12 - Renderer.paddingPoints.horizontal
-
-    private func arrange(sidePanel shown: Bool) {
-        // Showing or hiding the right panel is animated, as Xcode's inspector is; moving the tabs is not.
-        let animated = window.isVisible && arranged?.0 == vertical
-        arranged = (vertical, shown)
-        tabPanel.isHidden = !vertical
-        tabCapsule.isHidden = vertical
-        titleRow.isHidden = !vertical
-        footer.isHidden = !vertical
-        if shown { sidePanel.isHidden = false }
-        NSLayoutConstraint.deactivate(layout)
-        let ground = window.contentView!
-        let inset = Chrome.inset
-        let hostTop = vertical ? inset : 0
-        // The header lies over the top of the terminal, whose text starts below it.
-        host.topInset = Chrome.headerTop + Chrome.headerHeight - hostTop
-        layout = [
-            header.topAnchor.constraint(equalTo: ground.topAnchor, constant: Chrome.headerTop),
-            header.heightAnchor.constraint(equalToConstant: Chrome.headerHeight),
-            host.topAnchor.constraint(equalTo: ground.topAnchor, constant: hostTop),
-        ]
-        if vertical {
-            layout += [
-                tabPanel.leadingAnchor.constraint(equalTo: ground.leadingAnchor, constant: inset),
-                tabPanel.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
-                tabPanel.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
-                tabPanel.widthAnchor.constraint(equalToConstant: Chrome.tabPanelWidth),
-                header.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: Renderer.paddingPoints.horizontal),
-                header.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -inset - 6),
-                host.leadingAnchor.constraint(equalTo: tabPanel.trailingAnchor, constant: Self.textInset),
-                host.bottomAnchor.constraint(equalTo: footer.topAnchor),
-                host.trailingAnchor.constraint(equalTo: shown ? sidePanel.leadingAnchor : ground.trailingAnchor, constant: -inset),
-                footer.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-                footer.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-                footer.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
-                footer.heightAnchor.constraint(equalToConstant: Chrome.footerHeight),
-                sidePanel.topAnchor.constraint(equalTo: header.bottomAnchor),
-                sidePanel.bottomAnchor.constraint(equalTo: footer.topAnchor),
-                sidePanel.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -inset),
-                sidePanel.widthAnchor.constraint(equalToConstant: Chrome.sidePanelWidth),
-            ]
-        } else {
-            layout += [
-                header.leadingAnchor.constraint(equalTo: ground.leadingAnchor, constant: 12 + Chrome.trafficLightsWidth),
-                header.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -12),
-                host.leadingAnchor.constraint(equalTo: ground.leadingAnchor),
-                host.trailingAnchor.constraint(equalTo: ground.trailingAnchor),
-                host.bottomAnchor.constraint(equalTo: ground.bottomAnchor),
-                sidePanel.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
-                sidePanel.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -14),
-                sidePanel.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -38),
-                sidePanel.widthAnchor.constraint(equalToConstant: Chrome.sidePanelWidth),
-            ]
-        }
-        let before = host.frame
-        NSLayoutConstraint.activate(layout)
-        guard animated else {
-            sidePanel.isHidden = !shown
-            return
-        }
-        // Lay out at the end state, then move the terminal there from where it was while the panel fades.
-        ground.layoutSubtreeIfNeeded()
-        let after = host.frame
-        host.frame = before
-        sidePanel.alphaValue = shown ? 0 : 1
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = Chrome.animation
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            host.animator().frame = after
-            sidePanel.animator().alphaValue = shown ? 1 : 0
-        }, completionHandler: { [weak self] in
-            // Unless the panel was shown again meanwhile.
-            guard let self, self.arranged?.1 == false else { return }
-            self.sidePanel.isHidden = true
-            self.sidePanel.alphaValue = 1
-        })
-    }
 }
 
-/// Holds the selected tab's view and gives it all of its own size each time it is laid out.
+/// Holds the selected tab's view and gives it all of its own size each time it is laid out. The host runs up under
+/// the toolbar, so the panes along its top keep their text below the toolbar.
 private final class Host: NSView {
-    /// Room the panes along the top edge keep free above their text.
-    var topInset: CGFloat = 0 {
-        didSet { needsLayout = true }
-    }
-
     override func layout() {
         super.layout()
+        // The window's layout rect is the part that no toolbar covers.
+        let covered = window.map { max(0, bounds.maxY - convert($0.contentLayoutRect, from: nil).maxY) } ?? 0
         for view in subviews {
             view.frame = bounds
             view.layoutSubtreeIfNeeded()
             for pane in terminals(in: view) {
                 let touchesTop = abs(pane.convert(pane.bounds, to: self).maxY - bounds.maxY) < 1
-                pane.topInset = touchesTop ? topInset : 0
+                pane.topInset = touchesTop ? covered : 0
             }
         }
     }

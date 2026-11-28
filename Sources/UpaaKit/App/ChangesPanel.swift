@@ -27,15 +27,12 @@ final class ChangesPanel: NSView {
     private var selectedPath: String?
     private var reading = false
     private let rows = NSStackView()
-    private let openButton: Clickable
+    private let openButton = NSButton(title: "エディタで開く", target: nil, action: nil)
 
     /// Shows at most this many lines of a diff, so a huge file does not stall the window.
     private static let maxDiffLines = 400
 
     override init(frame: NSRect) {
-        openButton = Clickable(
-            cornerRadius: 15, selected: true, [Chrome.label("エディタで開く", size: 12)],
-            padding: NSEdgeInsets(top: 7, left: 14, bottom: 7, right: 14))
         super.init(frame: frame)
         rows.orientation = .vertical
         rows.alignment = .leading
@@ -56,7 +53,8 @@ final class ChangesPanel: NSView {
         document.topAnchor.constraint(equalTo: scroll.contentView.topAnchor).isActive = true
         document.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor).isActive = true
 
-        openButton.onClick = { [weak self] in self?.openInEditor() }
+        openButton.target = self
+        openButton.action = #selector(openInEditor)
         let stack = NSStackView(views: [scroll, openButton])
         stack.orientation = .vertical
         stack.spacing = 8
@@ -99,7 +97,7 @@ final class ChangesPanel: NSView {
         if let root = state?.root { refresh(directory: root) }
     }
 
-    private func openInEditor() {
+    @objc private func openInEditor() {
         guard let state, let path = state.selected else { return NSSound.beep() }
         NSWorkspace.shared.open(URL(fileURLWithPath: state.root).appendingPathComponent(path))
     }
