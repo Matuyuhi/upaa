@@ -1,7 +1,7 @@
 import AppKit
 
 /// The window's sidebar: a source list of the tabs, each with its name and the directory of its focused pane, under
-/// a heading with the button for a new tab, on a glass panel. The list's look, selection and hover are AppKit's own.
+/// a heading with the button for a new tab. The list's look, selection and hover are AppKit's own.
 final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     /// A row was picked by the user.
     var onSelect: ((Int) -> Void)?
@@ -17,7 +17,6 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         table.addTableColumn(column)
         table.style = .sourceList
         table.headerView = nil
-        table.backgroundColor = .clear
         table.rowHeight = 40
         table.allowsEmptySelection = false
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
@@ -49,11 +48,6 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         scroll.autohidesScrollers = true
 
         let view = NSView(frame: NSRect(x: 0, y: 0, width: Chrome.tabPanelWidth, height: 400))
-        // The panel runs up behind the traffic lights, as AppKit's floating sidebar does. The list sits over it, beside
-        // it in the view, since the glass places its own content only when it is laid out.
-        let panel = GlassPanel(cornerRadius: 16)
-        view.addSubview(panel)
-        panel.pin(to: view, inset: 8)
         for subview in [heading, scroll] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(subview)
@@ -61,15 +55,24 @@ final class TabList: NSViewController, NSTableViewDataSource, NSTableViewDelegat
         // The safe area keeps the heading below the traffic lights and the toolbar.
         NSLayoutConstraint.activate([
             heading.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            heading.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 12),
-            heading.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -8),
+            heading.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            heading.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             heading.heightAnchor.constraint(equalToConstant: 24),
             scroll.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 2),
-            scroll.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -8),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         self.view = view
+    }
+
+    /// AppKit puts the sidebar on a material that blends with what is behind the window, which hides upaa's card and
+    /// gradient. Blended within the window instead, they show through it.
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        var ancestor = view.superview
+        while let view = ancestor, !(view is NSVisualEffectView) { ancestor = view.superview }
+        (ancestor as? NSVisualEffectView)?.blendingMode = .withinWindow
     }
 
     func show(_ items: [(title: String, place: String)], selected: Int) {
