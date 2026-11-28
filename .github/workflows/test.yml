@@ -327,6 +327,7 @@ jobs:
             "Find (Cmd-F): ![find]($url/find.png)" '' \
             "In Japanese: ![ja]($url/ja.png)" '' \
             "Changes panel with lines wider than it (Cmd-J): ![changes]($url/changes.png)" '' \
+            "Links panel with addresses printed, wrapped and hyperlinked (Shift-Cmd-J): ![links]($url/links.png)" '' \
             "In dark mode: ![dark]($url/dark.png)" > ../comment.md
           if [ -f ../shots/settings.png ]; then printf '\n%s\n' "Settings (Cmd-,): ![settings]($url/settings.png)" >> ../comment.md; fi
           if [ -f ../shots/settings-ja.png ]; then printf '\n%s\n' "Settings in Japanese: ![settings-ja]($url/settings-ja.png)" >> ../comment.md; fi
