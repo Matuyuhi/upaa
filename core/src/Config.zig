@@ -8,8 +8,11 @@ const Config = @This();
 const std = @import("std");
 const vt = @import("ghostty");
 
-/// NUL-terminated. The last byte is never written.
-font_family: [129]u8 = fixed("Menlo"),
+/// The font, then its fallbacks, one per line, as in Ghostty: each font-family line after the first adds a fallback,
+/// and an empty one starts the list again. NUL-terminated. The last byte is never written.
+font_family: [513]u8 = fixed("Menlo"),
+/// Whether a font-family line has been read, so that the next one adds a fallback instead of replacing the default.
+font_family_named: bool = false,
 /// Points.
 font_size: f64 = 13,
 /// How much of the default background color covers what is behind the window (0 to 1). Cells with a color of their
@@ -116,9 +119,16 @@ pub fn applyColors(config: *const Config, terminal: vt.GhosttyTerminal, dark: bo
 
 fn set(config: *Config, key: []const u8, value: []const u8) error{ UnknownKey, InvalidValue }!void {
     if (std.mem.eql(u8, key, "font-family")) {
-        if (value.len == 0 or value.len >= config.font_family.len) return error.InvalidValue;
-        @memset(&config.font_family, 0);
-        @memcpy(config.font_family[0..value.len], value);
+        if (value.len == 0) {
+            config.font_family = fixed("Menlo");
+            config.font_family_named = false;
+            return;
+        }
+        const start = if (config.font_family_named) std.mem.indexOfScalar(u8, &config.font_family, 0).? + 1 else 0;
+        if (start + value.len >= config.font_family.len) return error.InvalidValue;
+        if (start == 0) @memset(&config.font_family, 0) else config.font_family[start - 1] = '\n';
+        @memcpy(config.font_family[start..][0..value.len], value);
+        config.font_family_named = true;
     } else if (std.mem.eql(u8, key, "font-size")) {
         const size = std.fmt.parseFloat(f64, value) catch return error.InvalidValue;
         if (!(size >= 4 and size <= 200)) return error.InvalidValue;
@@ -163,8 +173,8 @@ fn fail(config: *Config, line: usize, reason: []const u8) void {
     _ = std.fmt.bufPrint(config.problem[0 .. config.problem.len - 1], "config line {d}: {s}", .{ line, reason }) catch {};
 }
 
-fn fixed(comptime text: []const u8) [129]u8 {
-    var out: [129]u8 = @splat(0);
+fn fixed(comptime text: []const u8) [513]u8 {
+    var out: [513]u8 = @splat(0);
     @memcpy(out[0..text.len], text);
     return out;
 }
@@ -208,6 +218,18 @@ test "settings, and the first line that cannot be read" {
     const bad = parse("window-width = 3\nwindow-width = 120\nno equals sign");
     try std.testing.expectEqual(@as(u16, 120), bad.window_width);
     try std.testing.expectEqualStrings("config line 1: invalid value", std.mem.span(bad.values().problem.?));
+}
+
+test "each font-family line after the first adds a fallback, and an empty one starts again" {
+    const two = parse(
+        \\font-family = "JetBrains Mono"
+        \\font-family = Symbols Nerd Font
+    );
+    try std.testing.expectEqualStrings("JetBrains Mono\nSymbols Nerd Font", std.mem.span(two.values().font_family));
+    const again = parse("font-family = Menlo\nfont-family =\nfont-family = Monaco");
+    try std.testing.expectEqualStrings("Monaco", std.mem.span(again.values().font_family));
+    const cleared = parse("font-family = Monaco\nfont-family = \"\"");
+    try std.testing.expectEqualStrings("Menlo", std.mem.span(cleared.values().font_family));
 }
 
 test "colors reach the terminal" {

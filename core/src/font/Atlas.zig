@@ -38,10 +38,21 @@ pub fn init() error{OutOfMemory}!Atlas {
 }
 
 pub fn deinit(atlas: *Atlas) void {
-    var keys = atlas.glyphs.keyIterator();
-    while (keys.next()) |key| alloc.free(key.*);
+    atlas.clear();
     atlas.glyphs.deinit(alloc);
     alloc.free(atlas.pixels);
+}
+
+/// Forgets every glyph, for a new font.
+pub fn clear(atlas: *Atlas) void {
+    var keys = atlas.glyphs.keyIterator();
+    while (keys.next()) |key| alloc.free(key.*);
+    atlas.glyphs.clearRetainingCapacity();
+    @memset(atlas.pixels, 0);
+    atlas.cursor_x = 1;
+    atlas.cursor_y = 1;
+    atlas.shelf_height = 0;
+    atlas.generation += 1;
 }
 
 /// text is one cell's grapheme cluster (UTF-8). New text is drawn here on first use.

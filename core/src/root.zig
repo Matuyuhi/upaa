@@ -153,6 +153,12 @@ export fn upaa_renderer_new(font_name: [*:0]const u8, font_size_px: f64, mascot:
     return Renderer.create(font_name, font_size_px, mascot) catch null;
 }
 
+/// Changes the font. Returns false, keeping the old font, if the new one cannot be found.
+export fn upaa_renderer_set_font(renderer: *Renderer, font_name: [*:0]const u8, font_size_px: f64) bool {
+    renderer.setFont(font_name, font_size_px) catch return false;
+    return true;
+}
+
 export fn upaa_renderer_free(renderer: *Renderer) void {
     renderer.destroy();
 }

@@ -5,7 +5,8 @@ import Foundation
 final class TerminalSession {
     let handle: OpaquePointer
     private let events: Events
-    private let config: Config?
+    /// Gives setColors the colors it names.
+    var config: Config?
 
     /// The screen changed. Called on the main thread.
     var onWakeup: (() -> Void)? {

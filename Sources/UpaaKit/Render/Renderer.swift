@@ -12,8 +12,9 @@ final class Renderer {
 
     let device: MTLDevice
     /// Size of one cell (pixels).
-    let cellSize: (width: Int, height: Int)
-    private let underline: SIMD2<Float>
+    private(set) var cellSize: (width: Int, height: Int)
+    private var underline: SIMD2<Float>
+    private let scale: Double
     /// Margin around the grid (pixels). x is left and right, y is top and bottom.
     private(set) var padding: (top: Int, bottom: Int, horizontal: Int)
     private let topPadding: Int
@@ -39,12 +40,14 @@ final class Renderer {
     /// How much of the default background color covers what is behind the view (0 to 1).
     let backgroundOpacity: Double
 
-    /// fontSize is in points; scale is the screen scale factor (2 on Retina). mascot draws the axolotl behind the text.
+    /// fontName is the font, then its fallbacks, one per line. fontSize is in points; scale is the screen scale factor
+    /// (2 on Retina). mascot draws the axolotl behind the text.
     init(device: MTLDevice, fontName: String, fontSize: Double, scale: Double, mascot: Bool = false,
          backgroundOpacity: Double = 1) throws {
         guard let handle = upaa_renderer_new(fontName, fontSize * scale, mascot) else { throw SetupError.font }
         self.handle = handle
         self.device = device
+        self.scale = scale
         self.backgroundOpacity = backgroundOpacity
         let metrics = upaa_renderer_metrics(handle)
         cellSize = (Int(metrics.cell_width), Int(metrics.cell_height))
@@ -97,6 +100,15 @@ final class Renderer {
 
     deinit {
         upaa_renderer_free(handle)
+    }
+
+    /// Changes the font (names and size as for init). Returns false, keeping the old font, if it cannot be found.
+    func setFont(name: String, size: Double) -> Bool {
+        guard upaa_renderer_set_font(handle, name, size * scale) else { return false }
+        let metrics = upaa_renderer_metrics(handle)
+        cellSize = (Int(metrics.cell_width), Int(metrics.cell_height))
+        underline = SIMD2(Float(metrics.underline_offset), Float(metrics.underline_thickness))
+        return true
     }
 
     /// Number of columns and rows that fit in a drawing target of size size (pixels).
