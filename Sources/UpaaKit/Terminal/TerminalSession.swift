@@ -100,6 +100,24 @@ final class TerminalSession {
         upaa_session_select_all(handle)
     }
 
+    /// Starts the find bar's search through the screen and the scrollback, and selects the newest match. "" ends it.
+    func find(_ text: String) {
+        let bytes = Array(text.utf8)
+        upaa_session_find(handle, bytes, bytes.count)
+    }
+
+    /// Selects the next older match, or the next newer one with back, scrolling to it.
+    func findNext(back: Bool) {
+        upaa_session_find_next(handle, back)
+    }
+
+    /// How many matches the search has found so far, and the selected one's place from the newest (1), 0 if none.
+    var findCount: (selected: Int, total: Int) {
+        var selected = 0
+        let total = upaa_session_find_count(handle, &selected)
+        return (selected, total)
+    }
+
     enum PasteResult { case pasted, rejected, failed }
 
     /// Pastes text into the shell. .rejected means the text could run a command by itself; ask, then retry with allowUnsafe.

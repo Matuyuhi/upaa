@@ -115,6 +115,15 @@ enum { UPAA_POINTER_PRESS = 0, UPAA_POINTER_DRAG = 1, UPAA_POINTER_RELEASE = 2, 
 // Returns the autoscroll direction a drag asks for (0 none, 1 up, 2 down); send UPAA_POINTER_AUTOSCROLL from a timer while it is not 0.
 uint8_t upaa_session_select(UpaaSession *session, const UpaaPointer *pointer);
 void upaa_session_select_all(UpaaSession *session);
+// Starts the find bar's search through the screen and the scrollback for needle (UTF-8; ASCII letters match either
+// case) and selects the newest match. A needle that matches the same way as the last one keeps its results. An empty
+// needle ends the search. While it runs, upaa_renderer_frame marks the matches in view.
+void upaa_session_find(UpaaSession *session, const uint8_t *needle, size_t len);
+// Selects the next older match (the next newer one with back), wrapping around, and scrolls to it if it is out of view.
+void upaa_session_find_next(UpaaSession *session, bool back);
+// How many matches the search has found so far. selected gets the selected one's place counted from the newest (1),
+// or 0 if none is selected.
+size_t upaa_session_find_count(UpaaSession *session, size_t *selected);
 // The selected text (UTF-8). Returns the full length (0 if nothing is selected); anything beyond cap is truncated. -1 on failure.
 ptrdiff_t upaa_session_selection_text(UpaaSession *session, uint8_t *out, size_t cap);
 enum { UPAA_PASTE_PASTED = 0, UPAA_PASTE_REJECTED = 1, UPAA_PASTE_FAILED = 2 };
@@ -189,6 +198,8 @@ typedef struct {
     uint16_t cursor_col;
     uint16_t cursor_row;
     bool cursor_visible;
+    // The find bar's search has more of the scrollback to go through: draw again soon.
+    bool searching;
     // Milliseconds until the mascot changes, when the screen should be drawn again. 0 if nothing is waiting.
     uint32_t mascot_next_ms;
 } UpaaFrame;

@@ -18,6 +18,10 @@
 "Copy" = "コピー";
 "Paste" = "ペースト";
 "Select All" = "すべてを選択";
+"Find" = "検索";
+"Find…" = "検索…";
+"Find Next" = "次を検索";
+"Find Previous" = "前を検索";
 "View" = "表示";
 "Show Sidebar" = "サイドバーを表示";
 "Changes Panel" = "右パネル";
@@ -39,7 +43,9 @@
 "Split Right (⌘D)" = "縦に分割 (⌘D)";
 "Split Down (⇧⌘D)" = "横に分割 (⇧⌘D)";
 "Changes Panel (⌘J)" = "右パネル (⌘J)";
-"⌘D Split · ⌘B Tabs" = "⌘D 分割 · ⌘B タブ一覧";
+"Find (⌘F)" = "検索 (⌘F)";
+"Close Find" = "検索を閉じる";
+"⌘D Split · ⌘F Find · ⌘B Tabs" = "⌘D 分割 · ⌘F 検索 · ⌘B タブ一覧";
 
 /* Asking before closing or quitting */
 "Close this tab?" = "このタブを閉じますか？";

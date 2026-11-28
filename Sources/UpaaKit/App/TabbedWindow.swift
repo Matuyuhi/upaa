@@ -143,7 +143,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
 
     /// The tabs along the top get the window's width less what the traffic lights and the buttons beside them take.
     func windowDidResize(_ notification: Notification) {
-        tabStrip.room = max(0, window.frame.width - 300)
+        tabStrip.room = max(0, window.frame.width - 340)
     }
 
     /// The window's close button and Cmd-Shift-W ask first while a program runs in one of its panes.
@@ -195,7 +195,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         let footer = NSStackView(views: [
             Chrome.label(shell, size: 11, color: .secondaryLabelColor), sizeLabel,
             Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space,
-            Chrome.label(String(localized: "⌘D Split · ⌘B Tabs"), size: 11, color: .secondaryLabelColor),
+            Chrome.label(String(localized: "⌘D Split · ⌘F Find · ⌘B Tabs"), size: 11, color: .secondaryLabelColor),
         ])
         footer.spacing = 14
         host.wantsLayer = true
@@ -243,11 +243,12 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private static let newTabButton = NSToolbarItem.Identifier("newTab")
     private static let splitRight = NSToolbarItem.Identifier("splitRight")
     private static let splitDown = NSToolbarItem.Identifier("splitDown")
+    private static let findButton = NSToolbarItem.Identifier("find")
     private static let panelEdge = NSToolbarItem.Identifier("panelEdge")
     private static let panelButton = NSToolbarItem.Identifier("panel")
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.tabsEdge, .flexibleSpace, Self.splitRight, Self.splitDown, Self.panelEdge, Self.panelButton]
+        [Self.tabsEdge, .flexibleSpace, Self.splitRight, Self.splitDown, Self.findButton, Self.panelEdge, Self.panelButton]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -263,6 +264,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         case Self.panelEdge: return NSTrackingSeparatorToolbarItem(identifier: identifier, splitView: columns.splitView, dividerIndex: 1)
         case Self.splitRight: return button(identifier, "rectangle.split.2x1", String(localized: "Split Right (⌘D)"), #selector(splitRight(_:)))
         case Self.splitDown: return button(identifier, "rectangle.split.1x2", String(localized: "Split Down (⇧⌘D)"), #selector(splitDown(_:)))
+        case Self.findButton: return button(identifier, "magnifyingglass", String(localized: "Find (⌘F)"), #selector(showFindBar(_:)))
         case Self.panelButton: return button(identifier, "sidebar.right", String(localized: "Changes Panel (⌘J)"), #selector(toggleSidePanel(_:)))
         case Self.newTabButton: return button(identifier, "plus", String(localized: "New Tab (⌘T)"), #selector(newTab(_:)))
         case Self.tabsItem:
@@ -366,6 +368,11 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         let index = sender.tag == 9 ? tabs.count - 1 : sender.tag - 1
         guard index < tabs.count else { return NSSound.beep() }
         select(index)
+    }
+
+    /// The toolbar's find button, and Cmd-F while no pane has the keyboard: the focused pane's find bar.
+    @objc func showFindBar(_ sender: Any?) {
+        tabs[selected].focus.showFindBar(sender)
     }
 
     /// Cmd-J. Shows or hides the right panel, as AppKit animates a split view's panel.
