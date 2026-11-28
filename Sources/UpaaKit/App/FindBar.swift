@@ -2,6 +2,7 @@ import AppKit
 
 /// The find bar (Cmd-F, design M5): a capsule of glass floating over the bottom of a pane, with the text to find and
 /// the selected match's place among those found, then the buttons for the previous and next match and for closing it.
+/// The text sits on the glass itself, with no capsule of its own, since glass is not layered on glass.
 /// Return and Shift-Return go to the next and the previous match, and Escape closes it.
 final class FindBar: NSView, NSTextFieldDelegate {
     let field = NSTextField()
@@ -29,12 +30,9 @@ final class FindBar: NSView, NSTextFieldDelegate {
 
         let entry = NSStackView(views: [field, count])
         entry.spacing = 6
-        entry.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
-        let pill = Fill(Chrome.pill, cornerRadius: 15)
-        pill.addSubview(entry)
-        entry.pin(to: pill)
+        entry.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 6)
         let row = NSStackView(views: [
-            pill,
+            entry,
             button("chevron.left", String(localized: "Find Previous"), tag: 0),
             button("chevron.right", String(localized: "Find Next"), tag: 1),
             button("xmark", String(localized: "Close Find"), tag: 2),
@@ -42,8 +40,8 @@ final class FindBar: NSView, NSTextFieldDelegate {
         row.spacing = 6
         row.edgeInsets = NSEdgeInsets(top: 5, left: 5, bottom: 5, right: 5)
         NSLayoutConstraint.activate([
-            pill.widthAnchor.constraint(equalToConstant: 220),
-            pill.heightAnchor.constraint(equalToConstant: 30),
+            entry.widthAnchor.constraint(equalToConstant: 220),
+            entry.heightAnchor.constraint(equalToConstant: 30),
         ])
 
         // Liquid Glass where macOS has it (26 and later). Before that, the window's own blur, with the design's shadow.
@@ -79,6 +77,16 @@ final class FindBar: NSView, NSTextFieldDelegate {
     }
 
     override var mouseDownCanMoveWindow: Bool { false }
+
+    // A press on the bar outside the text and the buttons is the bar's. Passed on, it would reach the terminal behind
+    // and start a selection there, which the drag would then carry on.
+    override func mouseDown(with event: NSEvent) {
+        if field.currentEditor() == nil { window?.makeFirstResponder(field) }
+    }
+
+    override func mouseDragged(with event: NSEvent) {}
+
+    override func mouseUp(with event: NSEvent) {}
 
     /// Shows "selected/found", or nothing while there is no text to find.
     func show(count: (selected: Int, total: Int)) {
