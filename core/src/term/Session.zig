@@ -697,31 +697,34 @@ test "resize is visible to the child" {
 test "a zsh prompt that fills the width is drawn once after the width changes, as upaa's startup files mark it (#59)" {
     // Without the marks the terminal rewraps the old prompt and zsh redraws below what is left of it. Checking that
     // shows the test reproduces the bug.
-    try std.testing.expect(try promptsLeftByResizes("ZDOTDIR=\"$PWD/tests/zsh\" exec zsh -i", true) > 0);
-    try std.testing.expectEqual(@as(usize, 0), try promptsLeftByResizes(
+    try expectPromptsLeftByResizes("ZDOTDIR=\"$PWD/tests/zsh\" exec zsh -i", true, true);
+    try expectPromptsLeftByResizes(
         "UPAA_ZDOTDIR=\"$PWD/tests/zsh\" ZDOTDIR=\"$PWD/Resources/shell-integration/zsh\" exec zsh -i",
         true,
-    ));
+        false,
+    );
 }
 
 test "a bash prompt that fills the width is drawn once after the width changes, as upaa's startup file marks it (#69)" {
     // A login shell, as upaa starts it, so it reads tests/bash/.bash_profile. bash on the PATH, not Apple's /bin/bash.
     try skipUnless("[ \"$(command -v bash)\" != /bin/bash ]");
-    try std.testing.expect(try promptsLeftByResizes("HOME=\"$PWD/tests/bash\" exec bash -il", false) > 0);
-    try std.testing.expectEqual(@as(usize, 0), try promptsLeftByResizes(
+    try expectPromptsLeftByResizes("HOME=\"$PWD/tests/bash\" exec bash -il", false, true);
+    try expectPromptsLeftByResizes(
         "HOME=\"$PWD/tests/bash\" ENV=\"$PWD/Resources/shell-integration/bash/upaa.bash\" exec bash --posix -il",
         false,
-    ));
+        false,
+    );
 }
 
 test "a fish prompt that fills the width is drawn once after the width changes, as upaa's startup file marks it (#69)" {
     // fish reads tests/fish/config.fish.
     try skipUnless("command -v fish >/dev/null");
-    try std.testing.expect(try promptsLeftByResizes("XDG_CONFIG_HOME=\"$PWD/tests\" exec fish -i", true) > 0);
-    try std.testing.expectEqual(@as(usize, 0), try promptsLeftByResizes(
+    try expectPromptsLeftByResizes("XDG_CONFIG_HOME=\"$PWD/tests\" exec fish -i", true, true);
+    try expectPromptsLeftByResizes(
         "XDG_CONFIG_HOME=\"$PWD/tests\" XDG_DATA_DIRS=\"$PWD/Resources/shell-integration:/usr/local/share:/usr/share\" exec fish -i",
         true,
-    ));
+        false,
+    );
 }
 
 /// Skips the test where the shell it needs is not installed (CI installs it).
@@ -729,10 +732,11 @@ fn skipUnless(check: [*:0]const u8) !void {
     if (c.system(check) != 0) return error.SkipZigTest;
 }
 
-/// Starts a shell with the test prompt (in tests/), runs a command, changes the width a few times, and returns how many
-/// more prompts are on screen than before the changes. A shell that redraws the prompt for the new width is waited for
-/// until it has; bash redraws it as it was, so it is given a moment.
-fn promptsLeftByResizes(command: [*:0]const u8, redraws_for_width: bool) !usize {
+/// Starts a shell with the test prompt (in tests/), runs a command, changes the width a few times, and checks whether
+/// more prompts are on screen than before the changes, and that the command's output is still there. A shell that
+/// redraws the prompt for the new width is waited for until it has; bash redraws it as it was, so it is given a moment.
+/// The screen is printed when the check fails.
+fn expectPromptsLeftByResizes(command: [*:0]const u8, redraws_for_width: bool, left: bool) !void {
     const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = command });
     defer self.destroy();
     var out: [8192]u8 = undefined;
@@ -741,8 +745,8 @@ fn promptsLeftByResizes(command: [*:0]const u8, redraws_for_width: bool) !usize 
     // From the second prompt on, the marks come from PS1, which is how they are drawn again on each redraw. The first
     // prompt stays above, as an earlier prompt does, and is rewrapped like any other line. (A clear would leave it in
     // the scrollback, where a resize can bring it back.) The output is computed, so the typed command is not taken for
-    // it.
-    self.write("echo done-$((40+2))\n");
+    // it, in a way every shell here reads alike.
+    self.write("printf 'done-%s\\n' 42\n");
     try self.waitForText("done-42", &out);
     var tries: usize = 0;
     while (try self.countPrompts(&out) < 2) : (tries += 1) {
@@ -756,7 +760,12 @@ fn promptsLeftByResizes(command: [*:0]const u8, redraws_for_width: bool) !usize 
         if (redraws_for_width) try self.waitForPrompt(cols, &out) else _ = c.usleep(200 * 1000);
     }
     _ = c.usleep(200 * 1000);
-    return try self.countPrompts(&out) -| 2;
+    const n = self.plainText(&out) orelse return error.FormatFailed;
+    const screen = out[0..@min(n, out.len)];
+    if ((std.mem.count(u8, screen, "left") > 2) != left or std.mem.indexOf(u8, screen, "done-42") == null) {
+        std.debug.print("{s}\n", .{screen});
+        return error.TestUnexpectedResult;
+    }
 }
 
 fn countPrompts(self: *Session, out: []u8) !usize {
