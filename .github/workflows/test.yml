@@ -107,7 +107,7 @@ jobs:
             # ja: no config file, in Japanese, and its Settings window (Cmd-,) as well. The others are in English.
             # dark: no config file, with the runner switched to dark mode.
             # close, close-ja: no config file, with a job left in the background and Cmd-W pressed, so the sheet asking
-            # whether to close shows (photographed alone, as it is the front window), in English and in Japanese.
+            # whether to close shows over the window, in English and in Japanese.
             conf="$name"
             lang=en
             case "$name" in top | find | changes | close) conf=default ;; esac
