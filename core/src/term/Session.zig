@@ -592,14 +592,9 @@ fn promptsAfterResizes(command: [*:0]const u8) !usize {
     try self.waitForPrompt(80, &out);
 
     // From the second prompt on, the marks come from PS1, which is how they are drawn again on each redraw.
-    self.write("clear\n");
-    try self.waitForText("clear", &out);
-    var tries: usize = 0;
-    while (tries < 500) : (tries += 1) {
-        const len = self.plainText(&out) orelse return error.FormatFailed;
-        if (std.mem.indexOf(u8, out[0..@min(len, out.len)], "clear") == null) break;
-        _ = c.usleep(10 * 1000);
-    }
+    // The marker is computed, so the typed command is not mistaken for its output.
+    self.write("clear; echo cleared-$((40+2))\n");
+    try self.waitForText("cleared-42", &out);
     try self.waitForPrompt(80, &out);
 
     for ([_]u16{ 50, 70, 40, 80 }) |cols| {
