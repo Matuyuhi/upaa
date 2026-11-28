@@ -4,6 +4,7 @@ import AppKit
 enum Chrome {
     static let inset: CGFloat = 8
     static let headerHeight: CGFloat = 44
+    static let footerHeight: CGFloat = 26
     static let tabPanelWidth: CGFloat = 224
     static let sidePanelWidth: CGFloat = 240
     /// Horizontal tabs: the room left of the tabs for the traffic lights.

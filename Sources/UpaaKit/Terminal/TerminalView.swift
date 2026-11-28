@@ -7,7 +7,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
     let session: TerminalSession
     let renderer: Renderer
     private let commandQueue: MTLCommandQueue
-    private var gridSize: (cols: Int, rows: Int) = (0, 0)
+    private(set) var gridSize: (cols: Int, rows: Int) = (0, 0)
     /// The cursor cell from the last frame. The IME candidate window is placed below it.
     private var cursor: (col: Int, row: Int)?
     /// Scroll amount (in rows) not applied yet, since trackpads scroll by less than a row at a time.
@@ -21,6 +21,8 @@ final class TerminalView: MTKView, MTKViewDelegate {
     private var redrawQueued = false
     /// This view took the keyboard (a click on it, or the window choosing it).
     var onFocus: (() -> Void)?
+    /// The grid changed size.
+    var onResize: (() -> Void)?
 
     /// Drawable pixels per view point (2 on Retina).
     private var scale: CGFloat { drawableSize.width / max(bounds.width, 1) }
@@ -69,6 +71,7 @@ final class TerminalView: MTKView, MTKViewDelegate {
         session.resize(
             cols: UInt16(clamping: cols), rows: UInt16(clamping: rows),
             cellWidth: renderer.cellSize.width, cellHeight: renderer.cellSize.height)
+        onResize?()
     }
 
     /// Draws once the current event has been handled. Requests made while handling one event share a frame.

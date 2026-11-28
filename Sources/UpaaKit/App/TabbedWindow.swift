@@ -5,9 +5,10 @@ import AppKit
 /// As in the design (M5): the window is one card of the terminal's background color, translucent over a color gradient,
 /// and the terminal draws no background of its own. Down the left side the tabs are a glass panel, and the title and
 /// the tools sit in a band above the terminal; with the tabs at the top (Cmd-B), the tabs and tools float over the
-/// terminal in glass. Either way the terminal's text starts below them. The right panel (Cmd-J) shows the changed
-/// files of the focused pane's git repository: down the side it takes room from the terminal, with the tabs at the top
-/// it floats over it.
+/// terminal in glass. Either way the terminal's text starts below them. Down the side, a footer under the terminal shows
+/// the shell, the focused pane's size and the main keys. The right panel (Cmd-J) shows the changed files of the
+/// focused pane's git repository: down the side it takes room from the terminal, with the tabs at the top it floats
+/// over it.
 /// The menu actions reach this object through the responder chain, as the window's delegate.
 final class TabbedWindow: NSObject, NSWindowDelegate {
     private final class Tab {
@@ -56,6 +57,10 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     /// The tab's name, directory and branch, when the tabs are down the side.
     private let titleRow = NSStackView()
     private let panelButton = TabbedWindow.toolButton("sidebar.right", "右パネル (⌘J)")
+    /// The tools under the tab list. Git, the changed files, is the only one yet.
+    private let gitButton = TabbedWindow.toolButton("arrow.triangle.branch", "Git (⌘J)", size: 32, cornerRadius: 9)
+    private let footer = NSStackView()
+    private let sizeLabel = Chrome.label("", size: 11, mono: true, color: .secondaryLabelColor)
     private let sidePanel = GlassPanel(cornerRadius: 16)
     private let changes = ChangesPanel()
 
@@ -79,11 +84,11 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         window.delegate = self
         window.setContentSize(NSSize(
             width: terminalSize.width + 2 * Chrome.inset + Chrome.tabPanelWidth,
-            height: terminalSize.height + 2 * Chrome.inset + Chrome.headerHeight))
+            height: terminalSize.height + 2 * Chrome.inset + Chrome.headerHeight + Chrome.footerHeight))
         let card = Fill(background)
         ground.addSubview(card)
         card.pin(to: ground)
-        for view in [host, tabPanel, header, sidePanel] as [NSView] {
+        for view in [host, tabPanel, header, sidePanel, footer] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             ground.addSubview(view)
         }
@@ -91,6 +96,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         host.layer?.masksToBounds = true
         buildTabPanel()
         buildHeader()
+        buildFooter()
         sidePanel.content.addSubview(changes)
         changes.pin(to: sidePanel.content)
         changes.onUpdate = { [weak self] branch in
@@ -121,7 +127,10 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         space.setContentHuggingPriority(.init(1), for: .vertical)
         let line = NSBox()
         line.boxType = .separator
-        let footer = Chrome.label("⌘1〜9 で切り替え", size: 11, color: .secondaryLabelColor)
+        gitButton.onClick = { [weak self] in
+            guard let self, !self.sidePanelWanted else { return }
+            self.toggleSidePanel(nil)
+        }
         let column = NSStackView()
         column.orientation = .vertical
         column.spacing = 6
@@ -133,7 +142,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         column.addFullWidth(tabList)
         column.addArrangedSubview(space)
         column.addFullWidth(line)
-        column.addFullWidth(footer, inset: 6)
+        column.addArrangedSubview(gitButton)
 
         tabStrip.spacing = 2
         tabStrip.edgeInsets = NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)
@@ -169,15 +178,30 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         header.spacing = 8
     }
 
-    /// A round toolbar button with a symbol, as the design's. The name shows on hover.
-    private static func toolButton(_ symbol: String, _ name: String) -> Clickable {
+    /// The shell, the focused pane's size, and the main keys.
+    private func buildFooter() {
+        let shell = (ProcessInfo.processInfo.environment["SHELL"].map { ($0 as NSString).lastPathComponent }) ?? "sh"
+        let space = NSView()
+        space.setContentHuggingPriority(.init(1), for: .horizontal)
+        for view in [Chrome.label(shell, size: 11, color: .secondaryLabelColor), sizeLabel,
+                     Chrome.label("UTF-8", size: 11, color: .secondaryLabelColor), space,
+                     Chrome.label("⌘D 分割 · ⌘B タブパネル", size: 11, color: .secondaryLabelColor)] {
+            footer.addArrangedSubview(view)
+        }
+        footer.spacing = 14
+    }
+
+    /// A round button with a symbol, as the design's tools. The name shows on hover.
+    private static func toolButton(_ symbol: String, _ name: String, size: CGFloat = 30, cornerRadius: CGFloat = 15)
+        -> Clickable
+    {
         let image = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: name)!)
         image.symbolConfiguration = .init(pointSize: 13, weight: .regular)
         image.contentTintColor = .labelColor
-        let button = Clickable(cornerRadius: 15, selected: false, [image], padding: NSEdgeInsets())
+        let button = Clickable(cornerRadius: cornerRadius, selected: false, [image], padding: NSEdgeInsets())
         button.toolTip = name
-        button.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        button.widthAnchor.constraint(equalToConstant: size).isActive = true
+        button.heightAnchor.constraint(equalToConstant: size).isActive = true
         return button
     }
 
@@ -257,6 +281,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
     /// Follows the pane's title, focus and shell. Its shell exiting closes the pane.
     private func watch(_ terminal: TerminalView) {
         terminal.session.onTitle = { [weak self] in self?.refresh() }
+        terminal.onResize = { [weak self] in self?.showSize() }
         terminal.onFocus = { [weak self, weak terminal] in
             guard let self, let terminal, let tab = self.tab(of: terminal) else { return }
             tab.focus = terminal
@@ -406,6 +431,14 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         let panes = tab.panes
         for pane in panes { pane.alphaValue = panes.count == 1 || pane === tab.focus ? 1 : Chrome.inactivePaneAlpha }
         panelButton.isOn = sidePanelShown
+        gitButton.isOn = sidePanelShown
+        showSize()
+    }
+
+    private func showSize() {
+        guard selected < tabs.count else { return }
+        let size = tabs[selected].focus.gridSize
+        sizeLabel.stringValue = "\(size.cols)×\(size.rows)"
     }
 
     /// Down the side: the tab's name, and the directory of its focused pane. At the top: the name alone.
@@ -440,6 +473,7 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
         tabCapsule.isHidden = vertical
         titleRow.isHidden = !vertical
         sidePanel.isHidden = !shown
+        footer.isHidden = !vertical
         NSLayoutConstraint.deactivate(layout)
         let ground = window.contentView!
         let inset = Chrome.inset
@@ -455,10 +489,14 @@ final class TabbedWindow: NSObject, NSWindowDelegate {
                 header.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -inset - 6),
                 host.leadingAnchor.constraint(equalTo: tabPanel.trailingAnchor),
                 host.topAnchor.constraint(equalTo: ground.topAnchor, constant: inset),
-                host.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
+                host.bottomAnchor.constraint(equalTo: footer.topAnchor),
                 host.trailingAnchor.constraint(equalTo: shown ? sidePanel.leadingAnchor : ground.trailingAnchor, constant: -inset),
+                footer.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+                footer.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+                footer.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
+                footer.heightAnchor.constraint(equalToConstant: Chrome.footerHeight),
                 sidePanel.topAnchor.constraint(equalTo: header.bottomAnchor),
-                sidePanel.bottomAnchor.constraint(equalTo: ground.bottomAnchor, constant: -inset),
+                sidePanel.bottomAnchor.constraint(equalTo: footer.topAnchor),
                 sidePanel.trailingAnchor.constraint(equalTo: ground.trailingAnchor, constant: -inset),
                 sidePanel.widthAnchor.constraint(equalToConstant: Chrome.sidePanelWidth),
             ]

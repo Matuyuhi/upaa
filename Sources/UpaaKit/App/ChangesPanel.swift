@@ -113,8 +113,9 @@ final class ChangesPanel: NSView {
             add(Chrome.label("git のリポジトリではありません", size: 11, color: .secondaryLabelColor), inset: 6)
             return
         }
-        add(Chrome.label(state.files.isEmpty ? "変更はありません" : "変更されたファイル", size: 11, weight: .semibold,
-                         color: .secondaryLabelColor), inset: 6)
+        add(Chrome.label((["変更"] + [state.branch].compactMap { $0 }).joined(separator: " · "), size: 11,
+                         weight: .semibold, color: .secondaryLabelColor), inset: 6)
+        if state.files.isEmpty { add(Chrome.label("変更はありません", size: 12, color: .secondaryLabelColor), inset: 6, top: 6) }
         for file in state.files {
             let selected = file.path == state.selected
             var views: [NSView] = [Chrome.label(file.path, size: 12, weight: selected ? .medium : .regular, mono: true)]
