@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.terminate(nil)
                 return
             }
-            if window.setFrameUsingName(TabbedWindow.frameName) { keepOnScreen(window) } else { window.center() }
+            if window.setFrameUsingName(TabbedWindow.frameName) { TabbedWindow.keepOnScreen(window) } else { window.center() }
             window.makeKeyAndOrderFront(nil)
         }
         watchConfig()
@@ -44,17 +44,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
-    }
-
-    /// A window that a frame saved with other screens would leave partly off the screen comes back onto the screen it
-    /// is mostly on, or the main one, made smaller if it does not fit.
-    private func keepOnScreen(_ window: NSWindow) {
-        guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
-        var frame = window.frame
-        frame.size = NSSize(width: min(frame.width, visible.width), height: min(frame.height, visible.height))
-        frame.origin = NSPoint(x: min(max(frame.minX, visible.minX), visible.maxX - frame.width),
-                               y: min(max(frame.minY, visible.minY), visible.maxY - frame.height))
-        if frame != window.frame { window.setFrame(frame, display: false) }
     }
 
     /// Cmd-Q asks first while a program runs in one of the panes.

@@ -154,6 +154,19 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         window.invalidateRestorableState()
     }
 
+    /// The system's saved window keeps the frame it had when it was made, so the frame is kept here as well.
+    func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
+        NSLog("upaa diag encode \(window.frameDescriptor)")
+        state.encode(window.frameDescriptor, forKey: "frame")
+    }
+
+    func window(_ window: NSWindow, didDecodeRestorableState state: NSCoder) {
+        guard let frame = state.decodeObject(of: NSString.self, forKey: "frame") else { return }
+        NSLog("upaa diag decode \(frame) at \(NSStringFromRect(window.frame))")
+        window.setFrame(from: frame as String)
+        Self.keepOnScreen(window)
+    }
+
     /// The window's close button and Cmd-Shift-W ask first while a program runs in one of its panes.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard running.isEmpty else {
@@ -203,6 +216,17 @@ final class TabbedWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     static func saveFrame(of window: NSWindow) {
         guard !window.styleMask.contains(.fullScreen) else { return }
         window.saveFrame(usingName: frameName)
+    }
+
+    /// A window that a frame saved with other screens would leave partly off the screen comes back onto the screen it
+    /// is mostly on, or the main one, made smaller if it does not fit.
+    static func keepOnScreen(_ window: NSWindow) {
+        guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        var frame = window.frame
+        frame.size = NSSize(width: min(frame.width, visible.width), height: min(frame.height, visible.height))
+        frame.origin = NSPoint(x: min(max(frame.minX, visible.minX), visible.maxX - frame.width),
+                               y: min(max(frame.minY, visible.minY), visible.maxY - frame.height))
+        if frame != window.frame { window.setFrame(frame, display: false) }
     }
 
     /// The middle of the window: the selected tab, and the footer under it with the shell, the focused pane's size and
