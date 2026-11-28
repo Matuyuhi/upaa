@@ -102,8 +102,8 @@ pub const Options = struct {
     command: ?[*:0]const u8 = null,
     /// Directory to start in. null means the home directory for the login shell, the current one for a command.
     cwd: ?[*:0]const u8 = null,
-    /// upaa's zsh startup files, as for Pty.spawn.
-    zsh_dir: ?[*:0]const u8 = null,
+    /// upaa's startup files for the login shell, as for Pty.spawn.
+    integration_dir: ?[*:0]const u8 = null,
     callbacks: Callbacks = .{},
 };
 
@@ -149,7 +149,7 @@ pub fn create(opts: Options) !*Session {
         _ = c.close(fd);
     };
 
-    const pty = try Pty.spawn(opts.command, opts.cwd, opts.size, opts.zsh_dir);
+    const pty = try Pty.spawn(opts.command, opts.cwd, opts.size, opts.integration_dir);
     errdefer pty.deinit();
 
     self.* = .{
@@ -697,15 +697,42 @@ test "resize is visible to the child" {
 test "a zsh prompt that fills the width is drawn once after the width changes, as upaa's startup files mark it (#59)" {
     // Without the marks the terminal rewraps the old prompt and zsh redraws below what is left of it. Checking that
     // shows the test reproduces the bug.
-    try std.testing.expect(try promptsLeftByResizes("ZDOTDIR=\"$PWD/tests/zsh\" exec zsh -i") > 0);
+    try std.testing.expect(try promptsLeftByResizes("ZDOTDIR=\"$PWD/tests/zsh\" exec zsh -i", true) > 0);
     try std.testing.expectEqual(@as(usize, 0), try promptsLeftByResizes(
         "UPAA_ZDOTDIR=\"$PWD/tests/zsh\" ZDOTDIR=\"$PWD/Resources/shell-integration/zsh\" exec zsh -i",
+        true,
     ));
 }
 
-/// Starts zsh with the test prompt (tests/zsh/.zshrc), runs a command, changes the width a few times, and returns how
-/// many more prompts are on screen than before the changes.
-fn promptsLeftByResizes(command: [*:0]const u8) !usize {
+test "a bash prompt that fills the width is drawn once after the width changes, as upaa's startup file marks it (#69)" {
+    // A login shell, as upaa starts it, so it reads tests/bash/.bash_profile. bash on the PATH, not Apple's /bin/bash.
+    try skipUnless("[ \"$(command -v bash)\" != /bin/bash ]");
+    try std.testing.expect(try promptsLeftByResizes("HOME=\"$PWD/tests/bash\" exec bash -il", false) > 0);
+    try std.testing.expectEqual(@as(usize, 0), try promptsLeftByResizes(
+        "HOME=\"$PWD/tests/bash\" ENV=\"$PWD/Resources/shell-integration/bash/upaa.bash\" exec bash --posix -il",
+        false,
+    ));
+}
+
+test "a fish prompt that fills the width is drawn once after the width changes, as upaa's startup file marks it (#69)" {
+    // fish reads tests/fish/config.fish.
+    try skipUnless("command -v fish >/dev/null");
+    try std.testing.expect(try promptsLeftByResizes("XDG_CONFIG_HOME=\"$PWD/tests\" exec fish -i", true) > 0);
+    try std.testing.expectEqual(@as(usize, 0), try promptsLeftByResizes(
+        "XDG_CONFIG_HOME=\"$PWD/tests\" XDG_DATA_DIRS=\"$PWD/Resources/shell-integration:/usr/local/share:/usr/share\" exec fish -i",
+        true,
+    ));
+}
+
+/// Skips the test where the shell it needs is not installed (CI installs it).
+fn skipUnless(check: [*:0]const u8) !void {
+    if (c.system(check) != 0) return error.SkipZigTest;
+}
+
+/// Starts a shell with the test prompt (in tests/), runs a command, changes the width a few times, and returns how many
+/// more prompts are on screen than before the changes. A shell that redraws the prompt for the new width is waited for
+/// until it has; bash redraws it as it was, so it is given a moment.
+fn promptsLeftByResizes(command: [*:0]const u8, redraws_for_width: bool) !usize {
     const self = try Session.create(.{ .size = .{ .cols = 80, .rows = 24 }, .command = command });
     defer self.destroy();
     var out: [8192]u8 = undefined;
@@ -726,7 +753,7 @@ fn promptsLeftByResizes(command: [*:0]const u8) !usize {
     // The last width is not 80, where the first prompt alone would match waitForPrompt.
     for ([_]u16{ 50, 70, 40, 60 }) |cols| {
         self.resize(.{ .cols = cols, .rows = 24 }, 8, 16);
-        try self.waitForPrompt(cols, &out);
+        if (redraws_for_width) try self.waitForPrompt(cols, &out) else _ = c.usleep(200 * 1000);
     }
     _ = c.usleep(200 * 1000);
     return try self.countPrompts(&out) -| 2;
@@ -737,7 +764,7 @@ fn countPrompts(self: *Session, out: []u8) !usize {
     return std.mem.count(u8, out[0..@min(n, out.len)], "left");
 }
 
-/// Waits until zsh has drawn the test prompt's first line for this width: "left", dashes, "right", one column short.
+/// Waits until the shell has drawn the test prompt's first line for this width: "left", dashes, "right", one column short.
 fn waitForPrompt(self: *Session, cols: u16, out: []u8) !void {
     var line: [256]u8 = undefined;
     const dashes = cols - 10;

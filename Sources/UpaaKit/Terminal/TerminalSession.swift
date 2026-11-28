@@ -45,10 +45,10 @@ final class TerminalSession {
                 DispatchQueue.main.async { events.onTitle?() }
             }
         )
-        // A zsh login shell reads upaa's startup files first, which mark the prompt so a resize can clear it (#59).
-        // nil outside the .app, where the files are not, so zsh starts as usual.
-        let zshDir = Bundle.main.path(forResource: "zsh", ofType: nil, inDirectory: "shell-integration")
-        guard let handle = upaa_session_new(cols, rows, command, cwd, zshDir, &callbacks) else { return nil }
+        // A zsh, bash or fish login shell reads upaa's startup files first, which mark the prompt so a resize can clear
+        // it (#59, #69). nil outside the .app, where the files are not, so the shell starts as usual.
+        let integrationDir = Bundle.main.path(forResource: "shell-integration", ofType: nil)
+        guard let handle = upaa_session_new(cols, rows, command, cwd, integrationDir, &callbacks) else { return nil }
         self.handle = handle
         self.events = events
         self.config = config
