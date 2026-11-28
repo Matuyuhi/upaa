@@ -240,7 +240,7 @@ final class RemoteControl {
             return fail(String(localized: "Remote control is off. Add “remote-control = true” to \(Config.fileURL.path)."))
         }
         // The request: its length (4 bytes, little-endian), then each argument followed by a NUL.
-        let payload = arguments.flatMap { Array($0.utf8) + [0] }
+        let payload: [UInt8] = arguments.flatMap { Array($0.utf8) + [0] }
         let length: [UInt8] = withUnsafeBytes(of: UInt32(payload.count).littleEndian) { Array($0) }
         guard writeAll(fd, length + payload) else {
             return fail(String(cString: strerror(errno)))
